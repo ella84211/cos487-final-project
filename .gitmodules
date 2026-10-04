@@ -1,0 +1,3 @@
+[submodule "ARQMathCode"]
+	path = ARQMathCode
+	url = https://github.com/ARQMath/ARQMathCode

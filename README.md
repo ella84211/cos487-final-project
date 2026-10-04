@@ -14,3 +14,10 @@ In recent years, the capabilities of LLMs have increased significantly, as have 
 2. Extract abstract semantic language from LaTeX
    1. Using LaTeX only in LLM extraction
    2. Using LaTeX and its surrounding context in LLM extraction
+
+
+## Data Setup
+
+Download the official ARQMath `*.xml` files from [here](https://drive.google.com/drive/folders/1YekTVvfmYKZ8I5uiUMbs21G2mKwF9IAm). 
+
+Place these files in the `data/` directory, at the project's root.
