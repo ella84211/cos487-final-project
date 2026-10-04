@@ -1,7 +1,8 @@
-"""ARQMath readers that expose post and topic text with ``$...$`` formulas."""
+"""ARQMath readers that expose post and topic text for retrieval."""
 
 import re
 import sys
+import types
 from pathlib import Path
 
 from bs4 import BeautifulSoup
@@ -77,3 +78,77 @@ class LatexTopicReader(TopicReader):
         for topic in self.map_topics.values():
             topic.title = with_formula_delim(topic.title)
             topic.question = with_formula_delim(topic.question)
+
+
+def _strict_eqn():
+    """Return PyDetex's ``strict_eqn`` pipeline.
+
+    That pipeline keeps the text of each formula. The ``strict`` pipeline
+    replaces a formula with an ``EQUATION_n`` label instead.
+
+    PyDetex imports a Tk button while loading. The text pipeline does not use
+    that widget, so a Python install without Tk still runs.
+    """
+    cached = getattr(_strict_eqn, "_fn", None)
+    if cached is not None:
+        return cached
+
+    try:
+        from pydetex.pipelines import strict_eqn
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"_tkinter", "tkinter", "tkmacosx"}:
+            raise
+        stub = types.ModuleType("tkmacosx")
+        stub.Button = object
+        sys.modules["tkmacosx"] = stub
+        for name in list(sys.modules):
+            if name == "pydetex" or name.startswith("pydetex."):
+                del sys.modules[name]
+        from pydetex.pipelines import strict_eqn
+
+    _strict_eqn._fn = strict_eqn
+    return strict_eqn
+
+
+def with_pydetex(text: str | None) -> str:
+    """Translate ``$...$`` LaTeX in ``text`` to plain text with PyDetex.
+
+    A formula PyDetex cannot parse is left unchanged.
+    """
+    if not text:
+        return ""
+    try:
+        return _strict_eqn()(text, show_progress=False)
+    except Exception:
+        return text
+
+
+class PydetexCollectionReader(LatexDataReader):
+    """Collection reader whose question and answer text has been detexed.
+
+        reader = PydetexCollectionReader("data", version=".V1.3")
+        question = reader.post_parser.map_questions[1]
+        question.body
+    """
+
+    def __init__(self, root_file_path: str, version: str = ".V1.3"):
+        super().__init__(root_file_path, version)
+        for question in self.post_parser.map_questions.values():
+            question.title = with_pydetex(question.title)
+            question.body = with_pydetex(question.body)
+        for answer in self.post_parser.map_just_answers.values():
+            answer.body = with_pydetex(answer.body)
+
+
+class PydetexTopicReader(LatexTopicReader):
+    """Topic reader whose title and question have been detexed.
+
+        topics = PydetexTopicReader("data/topics/Topics_Task1_2020.xml")
+        topics.get_topic("A.1").question
+    """
+
+    def __init__(self, topic_file_path: str):
+        super().__init__(topic_file_path)
+        for topic in self.map_topics.values():
+            topic.title = with_pydetex(topic.title)
+            topic.question = with_pydetex(topic.question)
