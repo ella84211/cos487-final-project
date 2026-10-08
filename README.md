@@ -16,8 +16,13 @@ In recent years, the capabilities of LLMs have increased significantly, as have 
    2. Using LaTeX and its surrounding context in LLM extraction
 
 
-## Data Setup
+## Setup
 
-Download the official ARQMath `*.xml` files from [here](https://drive.google.com/drive/folders/1YekTVvfmYKZ8I5uiUMbs21G2mKwF9IAm). 
+This project uses conda. `bin/install.sh` creates an environment named `cos487-final`, installs `requirements.txt`, and downloads the ARQMath Task 1 collection, topics, and qrels into `data/`.
 
-Place these files in the `data/` directory, at the project's root.
+```bash
+bin/install.sh
+conda activate cos487-final
+```
+
+The files come from the [ARQMath Drive folder](https://drive.google.com/drive/folders/1ZPKIWDnhMGRaPNVLi1reQxZWTfH2R4u3). Collection XML files go in `data/`. Topics and qrels go in `data/topics/` and `data/qrels/`.
