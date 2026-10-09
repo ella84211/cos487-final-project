@@ -14,3 +14,15 @@ In recent years, the capabilities of LLMs have increased significantly, as have 
 2. Extract abstract semantic language from LaTeX
    1. Using LaTeX only in LLM extraction
    2. Using LaTeX and its surrounding context in LLM extraction
+
+
+## Setup
+
+This project uses conda. `bin/install.sh` creates an environment named `cos487-final`, installs `requirements.txt`, and downloads the ARQMath Task 1 collection, topics, and qrels into `data/`.
+
+```bash
+bin/install.sh
+conda activate cos487-final
+```
+
+The files come from the [ARQMath Drive folder](https://drive.google.com/drive/folders/1ZPKIWDnhMGRaPNVLi1reQxZWTfH2R4u3). Collection XML files go in `data/`. Topics and qrels go in `data/topics/` and `data/qrels/`.
