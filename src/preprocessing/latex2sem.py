@@ -6,7 +6,7 @@ The script can be run with the --context flag to include the context of the answ
 It should be run as a module from the root of the repository. Assumes the /data/ directory contains the Posts.V1.3.xml file.
 
 Example usage:
-    python -m src.preprocessing.semantic_meanings --output_file data/semantic_meaning_results.json --context
+    python -m src.preprocessing.latex2sem --output_file data/semantic_meaning_results.json --context
 """
 
 import json
@@ -16,7 +16,7 @@ import argparse
 from pathlib import Path
 
 from src.utils.reader import LatexDataReader
-from src.preprocessing.gemma_model import load_model, generate, delete_model
+from src.models.gemma import load_model, generate, delete_model
 
 
 # Number of characters to truncate the context to
