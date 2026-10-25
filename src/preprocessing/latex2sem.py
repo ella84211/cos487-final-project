@@ -1,26 +1,37 @@
 """
 This script uses Gemma to generate a semantic meaning for the formulas in the answers. 
-It uses the LatexDataReader to read the answers from the data directory. 
-The results are saved to a JSON file specified by the --output_file argument.
+Results are saved to a JSON file with {id: semantic_meaning} for every document that contains formulas. 
+This output file must be specified with the --output_file flag. 
+The cleaned data file must be specified with the --cleaned_file flag. The default cleaned data file is data/clean/answers.jsonl. 
 The script can be run with the --context flag to include the context of the answer in the prompt. 
-It should be run as a module from the root of the repository. Assumes the /data/ directory contains the Posts.V1.3.xml file.
+It should be run as a module from the root of the repository.
 
+Example usage to generate semantic descriptions:
+    python -m src.preprocessing.latex2sem --context
+
+The with_context() and without_context() functions each return a dictionary of {id: text} for every row in the cleaned data file. 
 Example usage:
-    python -m src.preprocessing.latex2sem --output_file data/semantic_meaning_results.json --context
+    from src.preprocessing.latex2sem import with_context
+    answers_with_context = with_context("data/clean/answers.jsonl", "data/semantic_descriptions/semantic_desc_with_context.json")
 """
 
 import json
 from tqdm import tqdm
-import os
 import argparse
 from pathlib import Path
 
-from src.utils.reader import LatexDataReader
-from src.models.gemma import load_model, generate, delete_model
+from pydetex.pipelines import strict_eqn
+
+from src.models.gemma import load_model, generate
+from src.utils import splice, get_formulas, get_text
 
 
 # Number of characters to truncate the context to
 TRUNCATE_LENGTH = 1000
+
+CLEANED_DATA = Path(__file__).resolve().parent.parent.parent / "data" / "clean" / "answers.jsonl"
+SEMANTIC_DESC_CONTEXT = Path(__file__).resolve().parent.parent.parent / "data" / "semantic_descriptions" / "semantic_desc_with_context.json"
+SEMANTIC_DESC_NO_CONTEXT = Path(__file__).resolve().parent.parent.parent / "data" / "semantic_descriptions" / "semantic_desc_no_context.json"
 
 MESSAGES_NO_CONTEXT = [
     {
@@ -62,50 +73,69 @@ MESSAGES_WITH_CONTEXT = [
 ]
 
 
-def get_formulas(text: str) -> list[str]:
-    """Extracts LaTeX formulas from the given text.
+def with_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DESC_CONTEXT) -> dict:
+    """Translate with Gemma, using context.
 
-    Args:
-        text (str): The input text containing LaTeX formulas.
-    Returns:
-        list[str]: A list of extracted LaTeX formulas.
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
+    that contains formulas.
     """
+    if not _is_file(source):
+        raise ValueError("with_context only supports .jsonl files.")
+    return _add_descriptions(source, semantic_desc)
 
-    if text.count("$") % 2 != 0:
-        return []
 
-    formulas = []
-    start = 0
+def without_context(source: Path, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT) -> dict:
+    """Translate with Gemma, without using context.
 
-    while True:
-        start = text.find("$", start)
-        if start == -1:
-            break
-        double = text.startswith("$$", start)
-        delimiter = "$$" if double else "$"
-        end = text.find(delimiter, start + len(delimiter))
-        if end == -1:
-            break
-        formula = text[start + len(delimiter):end]
-        formulas.append(formula)
-        start = end + len(delimiter)
-    return formulas
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
+    that contains formulas.
+    """
+    if not _is_file(source):
+        raise ValueError("without_context only supports .jsonl files.")
+    return _add_descriptions(source, semantic_desc)
+
+
+def _add_descriptions(source: Path, semantic_desc: Path) -> dict:
+    with open(semantic_desc, "r", encoding="utf-8") as file:
+        data = json.load(file)
+    cleaned_data = []
+    with open(source, "r", encoding="utf-8") as file:
+        for line in file:
+            cleaned_data.append(json.loads(line))
+    results = {}
+    for item in cleaned_data:
+        id = str(item["id"])
+        results[id] = " ".join(get_text(item["body"]))
+        if id in data:
+            results[id] += " " + data[id]
+    return results
+
+
+def _is_file(source: str | Path) -> bool:
+    return isinstance(source, Path) or source.endswith(".jsonl")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Process LaTeX formulas and extract semantic meanings.")
-    parser.add_argument("--output_file", type=str, required=True, help="Path to the output JSON file to save results.")
+    parser.add_argument("--cleaned_file", type=str, default=CLEANED_DATA, help="Path to the cleaned JSONL file containing answers.")
+    parser.add_argument("--output_file", type=str, default=SEMANTIC_DESC_NO_CONTEXT, help="Path to the output JSON file to save results.")
     parser.add_argument("--context", action="store_true", help="Use context for semantic meaning extraction.")
     args = parser.parse_args()
 
+    cleaned_file = args.cleaned_file
     output_file = args.output_file
     use_context = args.context
 
     filepath = Path(output_file)
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    reader = LatexDataReader("data/", test=True)
-    map_just_answers = reader.post_parser.map_just_answers
+    data = []
+    with open(cleaned_file, "r", encoding="utf-8") as file:
+        for line in file:
+            data.append(json.loads(line))
+
     model, assistant, processor = load_model()
     results = {}
     if use_context:
@@ -114,14 +144,15 @@ def main():
         messages = MESSAGES_NO_CONTEXT
 
     try:
-        for id, answer in tqdm(map_just_answers.items()):
-            answer_text = answer.body
-            formulas = get_formulas(answer_text)
+        for answer_obj in tqdm(data, desc="Processing answers"):
+            formulas = get_formulas(answer_obj["body"])
             if not formulas:
                 continue
+            id = str(answer_obj["id"])
             results[id] = ""
             contents = []
             if use_context:
+                answer_text = splice(answer_obj["body"])
                 len_answer_text = len(answer_text)
                 i = 1
                 while len_answer_text / i > TRUNCATE_LENGTH:
@@ -151,6 +182,14 @@ def main():
                     max_new_tokens=64
                 )
                 results[id] += semantic_meaning + " "
+            semantic_meaning = results[id].strip()
+            if "\\" in semantic_meaning:
+                try:
+                    semantic_meaning = " ".join(strict_eqn(semantic_meaning, show_progress=False).split()) or None
+                except Exception:
+                    pass
+            results[id] = semantic_meaning.replace("$", "")
+
         with open(output_file, "w", encoding="utf-8") as file:
             json.dump(results, file, indent=2)
         print(f"Results saved to {output_file}.")
