@@ -26,3 +26,11 @@ conda activate cos487-final
 ```
 
 The files come from the [ARQMath Drive folder](https://drive.google.com/drive/folders/1ZPKIWDnhMGRaPNVLi1reQxZWTfH2R4u3). Collection XML files go in `data/`. Topics and qrels go in `data/topics/` and `data/qrels/`.
+
+Then clean the data. This splits every answer and topic into text and formulas, and writes them to `data/clean/` for the preprocessing approaches. It takes about 3 minutes and about 7 GB of memory.
+
+```bash
+python -m src.preprocessing.clean
+```
+
+See [`src/preprocessing/README.md`](src/preprocessing/README.md) for the preprocessing approaches and [`src/README.md`](src/README.md) for the shared utilities.
