@@ -1,35 +1,32 @@
 """
 Translate the LaTeX formulas in answers and topics into English, by PyDetex or by Gemma.
 
-The index script imports this module and reads the translated text directly:
+Given one cleaned file from data/clean/, each function returns {id: text} for every row in it,
+with every formula replaced by English. A topic's text is its title and question joined.
+A formula with no usable translation is kept as its original LaTeX.
+Run src.preprocessing.clean first to write the cleaned files.
+Given a single string, each function returns that string's translation.
 
+Example usage:
     from src.preprocessing import latex2eng
 
-    translation = latex2eng.by_llm()
-    for answer_id, text in translation.answers():
-        ...
-    for topic_id, title, question in translation.topics(2020):
-        ...
-
-Each formula is translated the first time it appears, and the result is saved to a cache file
-under data/latex2eng/. Later runs read the cache and only translate formulas that are not in it.
-A formula with no usable translation is put back as its original LaTeX.
-Run src.preprocessing.clean first; formulas are read from data/clean/.
+    answers = latex2eng.by_llm("data/clean/answers.jsonl")
+    topics = latex2eng.by_llm("data/clean/topics_2020.jsonl")
+    half = latex2eng.by_detex(r"\\frac{1}{2}")
 """
 
-import re
-import sys
-import types
-from functools import lru_cache
+import json
+from functools import cache
 from pathlib import Path
 
-from src.utils.translation import Translation
+from pydetex.pipelines import strict_eqn
+from tqdm import tqdm
+
+from src.utils import splice
 
 
-CACHE_DIR = Path("data/latex2eng")
 # Formulas longer than this many characters are not sent to the model.
 TRUNCATE_LENGTH = 1000
-_WHITESPACE = re.compile(r"\s+")
 
 SYSTEM_PROMPT = (
     "You are a skilled mathematician. Translate the LaTeX formula into natural language. "
@@ -42,107 +39,81 @@ SYSTEM_PROMPT = (
 )
 
 
-def by_detex(cache_path: str | Path = CACHE_DIR / "detex.jsonl") -> Translation:
-    """Translate each formula with PyDetex."""
-    return Translation(_detex_latex, cache_path)
+def by_detex(source: str | Path) -> dict | str:
+    """Translate with PyDetex.
 
-
-def by_llm(cache_path: str | Path = CACHE_DIR / "llm.jsonl", **model_kwargs) -> Translation:
-    """Translate each formula with Gemma.
-
-    The model loads the first time a formula is missing from the cache, so a
-    run over a complete cache never loads it. ``model_kwargs`` go to
-    ``src.models.gemma.load_model``.
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Given a string, returns its translation: a bare formula like ``\\frac{1}{2}``,
+    or text with ``$``-delimited formulas like an LLM reply. A string PyDetex
+    cannot translate is returned unchanged.
     """
-    loaded = {}
-
-    def translate(latex: str) -> str | None:
-        if len(latex) > TRUNCATE_LENGTH:
-            return None
-        if not loaded:
-            from src.models.gemma import generate, load_model
-
-            model, assistant, processor = load_model(**model_kwargs)
-            loaded.update(generate=generate, model=model, assistant=assistant, processor=processor)
-        raw = loaded["generate"](
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Translate this LaTeX formula to English: {latex}"},
-            ],
-            model=loaded["model"],
-            processor=loaded["processor"],
-            assistant=loaded["assistant"],
-            max_new_tokens=64,
-        )
-        return clean_translation(raw) or None
-
-    return Translation(translate, cache_path)
+    if _is_file(source):
+        return _translate(lambda latex: _detex(f"${latex}$"), source)
+    return _detex(source if "$" in source else f"${source}$") or source
 
 
-def clean_translation(text: str) -> str:
-    """Remove leftover LaTeX delimiters from a model translation.
+def by_llm(source: str | Path) -> dict | str:
+    """Translate with Gemma.
 
-    Phrases that still contain ``$`` or a LaTeX command are passed through
-    pydetex first. Remaining ``$`` signs are then dropped.
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Given one LaTeX formula, returns its translation, or the formula unchanged
+    when there is none. The model loads on the first call and stays loaded.
     """
-
-    if not text:
-        return ""
-    cleaned = text
-    if "$" in cleaned or "\\" in cleaned:
-        cleaned = with_pydetex(cleaned)
-    cleaned = cleaned.replace("$", "")
-    return _WHITESPACE.sub(" ", cleaned).strip()
+    if _is_file(source):
+        return _translate(_llm, source)
+    return _llm(source) or source
 
 
-def with_pydetex(text: str | None) -> str:
-    """Run PyDetex over ``text``. Text PyDetex cannot parse is left unchanged."""
-    if not text:
-        return ""
+def _is_file(source: str | Path) -> bool:
+    return isinstance(source, Path) or source.endswith(".jsonl")
+
+
+@cache
+def _gemma():
+    from src.models.gemma import load_model
+
+    return load_model()
+
+
+def _llm(latex: str) -> str | None:
+    if len(latex) > TRUNCATE_LENGTH:
+        return None
+    from src.models.gemma import generate
+
+    model, assistant, processor = _gemma()
+    reply = generate(
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Translate this LaTeX formula to English: {latex}"},
+        ],
+        model=model,
+        processor=processor,
+        assistant=assistant,
+        max_new_tokens=64,
+    )
+    if "\\" in reply:
+        reply = _detex(reply) or reply
+    return reply.replace("$", "")
+
+
+def _translate(translate, path: str | Path) -> dict:
+    """Splice each row's formulas through ``translate``, calling it once per distinct formula."""
+    translate = cache(translate)
+
+    def replace(formula):
+        return translate(formula["latex"])
+
+    texts = {}
+    with open(path, encoding="utf-8") as file:
+        for line in tqdm(file, desc=Path(path).name):
+            row = json.loads(line)
+            row_id = row.pop("id")
+            texts[row_id] = " ".join(splice(field, replace) for field in row.values()).strip()
+    return texts
+
+
+def _detex(text: str) -> str | None:
     try:
-        return _strict_eqn()(text, show_progress=False)
-    except Exception:
-        return text
-
-
-def _detex_latex(latex: str) -> str | None:
-    return _detex_source(f"${latex}$")
-
-
-@lru_cache(maxsize=200_000)
-def _detex_source(source: str) -> str | None:
-    try:
-        out = _strict_eqn()(source, show_progress=False)
+        return " ".join(strict_eqn(text, show_progress=False).split()) or None
     except Exception:
         return None
-    return _WHITESPACE.sub(" ", out).strip() or None
-
-
-def _strict_eqn():
-    """Return PyDetex's ``strict_eqn`` pipeline.
-
-    That pipeline keeps the text of each formula. The ``strict`` pipeline
-    replaces a formula with an ``EQUATION_n`` label instead.
-
-    PyDetex imports a Tk button while loading. The text pipeline does not use
-    that widget, so a Python install without Tk still runs.
-    """
-    cached = getattr(_strict_eqn, "_fn", None)
-    if cached is not None:
-        return cached
-
-    try:
-        from pydetex.pipelines import strict_eqn
-    except ModuleNotFoundError as exc:
-        if exc.name not in {"_tkinter", "tkinter", "tkmacosx"}:
-            raise
-        stub = types.ModuleType("tkmacosx")
-        stub.Button = object
-        sys.modules["tkmacosx"] = stub
-        for name in list(sys.modules):
-            if name == "pydetex" or name.startswith("pydetex."):
-                del sys.modules[name]
-        from pydetex.pipelines import strict_eqn
-
-    _strict_eqn._fn = strict_eqn
-    return strict_eqn
