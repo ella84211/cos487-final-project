@@ -1,16 +1,18 @@
 """
 Translate the LaTeX formulas in answers and topics into English, by PyDetex or by Gemma.
 
-Each function reads one cleaned file from data/clean/ and returns {id: text} for every row in it,
+Given one cleaned file from data/clean/, each function returns {id: text} for every row in it,
 with every formula replaced by English. A topic's text is its title and question joined.
 A formula with no usable translation is kept as its original LaTeX.
 Run src.preprocessing.clean first to write the cleaned files.
+Given a single string, each function returns that string's translation.
 
 Example usage:
     from src.preprocessing import latex2eng
 
     answers = latex2eng.by_llm("data/clean/answers.jsonl")
     topics = latex2eng.by_llm("data/clean/topics_2020.jsonl")
+    half = latex2eng.by_detex(r"\\frac{1}{2}")
 """
 
 import json
@@ -37,35 +39,61 @@ SYSTEM_PROMPT = (
 )
 
 
-def by_detex(path: str | Path) -> dict:
-    """Return ``{id: text}`` for every row of the cleaned file at ``path``, translated by PyDetex."""
-    return _translate(lambda latex: _detex(f"${latex}$"), path)
+def by_detex(source: str | Path) -> dict | str:
+    """Translate with PyDetex.
+
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Given a string, returns its translation: a bare formula like ``\\frac{1}{2}``,
+    or text with ``$``-delimited formulas like an LLM reply. A string PyDetex
+    cannot translate is returned unchanged.
+    """
+    if _is_file(source):
+        return _translate(lambda latex: _detex(f"${latex}$"), source)
+    return _detex(source if "$" in source else f"${source}$") or source
 
 
-def by_llm(path: str | Path) -> dict:
-    """Return ``{id: text}`` for every row of the cleaned file at ``path``, translated by Gemma."""
-    from src.models.gemma import generate, load_model
+def by_llm(source: str | Path) -> dict | str:
+    """Translate with Gemma.
 
-    model, assistant, processor = load_model()
+    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
+    Given one LaTeX formula, returns its translation, or the formula unchanged
+    when there is none. The model loads on the first call and stays loaded.
+    """
+    if _is_file(source):
+        return _translate(_llm, source)
+    return _llm(source) or source
 
-    def translate(latex: str) -> str | None:
-        if len(latex) > TRUNCATE_LENGTH:
-            return None
-        reply = generate(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Translate this LaTeX formula to English: {latex}"},
-            ],
-            model=model,
-            processor=processor,
-            assistant=assistant,
-            max_new_tokens=64,
-        )
-        if "\\" in reply:
-            reply = _detex(reply) or reply
-        return reply.replace("$", "")
 
-    return _translate(translate, path)
+def _is_file(source: str | Path) -> bool:
+    return isinstance(source, Path) or source.endswith(".jsonl")
+
+
+@cache
+def _gemma():
+    from src.models.gemma import load_model
+
+    return load_model()
+
+
+def _llm(latex: str) -> str | None:
+    if len(latex) > TRUNCATE_LENGTH:
+        return None
+    from src.models.gemma import generate
+
+    model, assistant, processor = _gemma()
+    reply = generate(
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Translate this LaTeX formula to English: {latex}"},
+        ],
+        model=model,
+        processor=processor,
+        assistant=assistant,
+        max_new_tokens=64,
+    )
+    if "\\" in reply:
+        reply = _detex(reply) or reply
+    return reply.replace("$", "")
 
 
 def _translate(translate, path: str | Path) -> dict:

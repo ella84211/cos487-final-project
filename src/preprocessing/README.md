@@ -21,14 +21,15 @@ from src.preprocessing import latex2eng
 
 answers = latex2eng.by_detex("data/clean/answers.jsonl")     # {answer_id: text}
 topics = latex2eng.by_detex("data/clean/topics_2020.jsonl")  # {topic_id: text}
+half = latex2eng.by_detex(r"\frac{1}{2}")                    # "½"
 ```
 
-### `by_detex(path)`
+### `by_detex(source)`
 
-Translates formulas with PyDetex. Returns `{id: text}` for every row of the cleaned file at `path`. A topic's text is its title and question joined.
+Translates with PyDetex. Given a cleaned `.jsonl` file, returns `{id: text}` for every row in it. A topic's text is its title and question joined. Given a string, returns its translation. The string can be a bare formula, or text with `$`-delimited formulas such as an LLM reply.
 
-### `by_llm(path)`
+### `by_llm(source)`
 
-Translates formulas with Gemma. Returns the same dictionary as `by_detex`.
+Translates with Gemma. Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`. Given one LaTeX formula, returns its translation. The model loads on the first call and stays loaded.
 
 A formula with no translation is kept as its original LaTeX.
