@@ -70,7 +70,7 @@ def _is_file(source: str | Path) -> bool:
 
 @cache
 def _gemma():
-    from src.models.gemma import load_model
+    from src.preprocessing.gemma import load_model
 
     return load_model()
 
@@ -78,7 +78,7 @@ def _gemma():
 def _llm(latex: str) -> str | None:
     if len(latex) > TRUNCATE_LENGTH:
         return None
-    from src.models.gemma import generate
+    from src.preprocessing.gemma import generate
 
     model, assistant, processor = _gemma()
     reply = generate(

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from pydetex.pipelines import strict_eqn
 
-from src.models.gemma import load_model, generate
+from src.preprocessing.gemma import load_model, generate
 from src.utils import splice, get_formulas, get_text
 
 
@@ -98,6 +98,10 @@ def without_context(source: Path, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT
 
 
 def _add_descriptions(source: Path, semantic_desc: Path) -> dict:
+    if type(semantic_desc) is str:
+        semantic_desc = Path(semantic_desc)
+    if not semantic_desc.exists():
+        raise FileNotFoundError(f"Semantic description file {semantic_desc} not found.")
     with open(semantic_desc, "r", encoding="utf-8") as file:
         data = json.load(file)
     cleaned_data = []
@@ -107,7 +111,8 @@ def _add_descriptions(source: Path, semantic_desc: Path) -> dict:
     results = {}
     for item in cleaned_data:
         id = str(item["id"])
-        results[id] = " ".join(get_text(item["body"]))
+        text = get_text(item["body"])
+        results[id] = " ".join(text).strip()
         if id in data:
             results[id] += " " + data[id]
     return results

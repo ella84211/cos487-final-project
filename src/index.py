@@ -18,10 +18,11 @@ import json
 import os
 import argparse
 import time
+import nltk
 
 from pathlib import Path
 from tqdm import tqdm
-from collections.abc import Callable
+from nltk.corpus import stopwords
 
 from src.preprocessing.latex2eng import by_llm, by_detex
 from src.preprocessing.latex2sem import with_context, without_context
@@ -40,9 +41,37 @@ PREPROCESSING_OPTIONS = {
 }
 
 
+nltk_data_dir = Path.home() / ".cache" / "cos487-nltk"
+nltk_data_dir.mkdir(parents=True, exist_ok=True)
+nltk_data_dir.chmod(0o700)
+
+nltk.data.path.insert(0, str(nltk_data_dir))
+
+try:
+    nltk.data.find("corpora/stopwords")
+except LookupError:
+    success = nltk.download(
+        "stopwords",
+        download_dir=str(nltk_data_dir),
+        quiet=True,
+        raise_on_error=True,
+    )
+    if not success:
+        raise RuntimeError("Could not download NLTK stopwords")
+
+stop_words = set(stopwords.words("english"))
+punctuation = ".,!?;:()[]{}\"'"
+
+
 def split_words(text: str) -> list[str]:
     """Split a string into words, removing punctuation and whitespace."""
-    return [word.strip(".,!?;:()[]{}\"'") for word in text.split() if word.strip(".,!?;:()[]{}\"'")]
+
+    return [
+        word.strip(punctuation)
+        for word in text.lower().split()
+        if word.strip(punctuation)
+        and word.strip(punctuation) not in stop_words
+    ]
 
 
 def build_index(preprocessing: str, source: str | Path, semantic_desc: str | Path = None, force_rebuild: bool=False):

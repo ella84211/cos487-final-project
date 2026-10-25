@@ -36,5 +36,6 @@ def without_latex(source: Path) -> dict:
         for line in tqdm(f):
             row = json.loads(line)
             row_id = row.pop("id")
-            results[row_id] = " ".join(get_text(field) for field in row.values()).strip()
+            text = get_text(row.pop("body"))
+            results[row_id] = " ".join(text).strip()
     return results
