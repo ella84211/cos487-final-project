@@ -11,6 +11,13 @@ data/semantic_descriptions/semantic_desc_no_context.json.
 
 Example usage:
     python -m src.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
+
+For loading and using the indexes, see the following functions:
+    load_index(preprocessing: str) -> dict
+    get_term_frequency(index: dict, term: str) -> dict
+    get_document_length(index: dict, docid: str) -> int | None
+    get_num_documents(index: dict) -> int
+    get_average_document_length(index: dict) -> float
 """
 
 
@@ -114,10 +121,13 @@ def build_index(preprocessing: str, source: str | Path, semantic_desc: str | Pat
 
 def load_index(preprocessing: str) -> dict:
     """Loads the inverted index for the given preprocessing option from the INDEX_DIR directory."""
+    if preprocessing not in PREPROCESSING_OPTIONS:
+        raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(PREPROCESSING_OPTIONS.keys())}")
     index_path = f"{INDEX_DIR}/{preprocessing}_index.json"
     if not os.path.exists(index_path):
         raise FileNotFoundError(f"Index file {index_path} does not exist. Please build the index first.")
     
+    print(f"Loading index for preprocessing option '{preprocessing}'...")
     with open(index_path, "r", encoding="utf-8") as file:
         index = json.load(file)
     return index
