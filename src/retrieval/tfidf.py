@@ -1,6 +1,6 @@
 """
 TF-IDF retrieval system
-Contains the retrieve() function, which retrieves documents from an index using the TF-IDF algorithm.
+Contains the retrieve() function, which retrieves documents for a given query using the TF-IDF algorithm.
 """
 
 import math

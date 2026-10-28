@@ -33,3 +33,40 @@ Translates with PyDetex. Given a cleaned `.jsonl` file, returns `{id: text}` for
 Translates with Gemma. Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`. Given one LaTeX formula, returns its translation. The model loads on the first call and stays loaded.
 
 A formula with no translation is kept as its original LaTeX.
+
+## latex2sem
+
+Generates natural language semantic descriptions of formulas using Gemma. Before using `with_context()` or `without_context()`, or the corresponding functions for topics, generate the semantic descriptions by running this file from the repository root:
+
+```bash
+python -m src.preprocessing.latex2sem
+python -m src.preprocessing.latex2sem --context
+```
+
+This generates the semantic descriptions, both with and without the surrounding text context, for both topics and answers. The descriptions are saved to `data/semantic_descriptions/` as `semantic_desc_no_context.json`, `semantic_desc_no_context_topics.json`, `semantic_desc_with_context.json`, and `semantic_desc_with_context_topics.json`. For further arguments, see `latex2sem.py`.
+
+### `with_context(source, semantic_desc)`
+
+Appends the semantic descriptions generated with the surrounding text to each answer's text. Given a cleaned `.jsonl` file and the semantic descriptions, returns the same dictionary as `by_detex`.
+
+### `without_context(source, semantic_desc)`
+
+Appends the semantic descriptions generated without the surrounding text to each answer's text. Given a cleaned `.jsonl` file and the semantic descriptions, returns the same dictionary as `by_detex`.
+
+### `with_context_topics(source, semantic_desc)`
+
+Appends the semantic descriptions generated with the surrounding text to each topic's text. Given a list of cleaned `.jsonl` files and the semantic descriptions (in one file), returns the same dictionary as `by_detex`.
+
+### `without_context_topics(source, semantic_desc)`
+
+Appends the semantic descriptions generated without the surrounding text to each topic's text. Given a list of cleaned `.jsonl` files and the semantic descriptions (in one file), returns the same dictionary as `by_detex`.
+
+## baseline_approaches
+
+### `with_latex(source)`
+
+Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`, but with the original LaTeX formulas instead of their English translations.
+
+### `without_latex(source)`
+
+Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`, but with the original LaTeX formulas removed from the text.

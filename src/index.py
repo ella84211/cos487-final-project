@@ -12,12 +12,12 @@ data/semantic_descriptions/semantic_desc_no_context.json.
 Example usage:
     python -m src.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
 
-For loading and using the indexes, see the following functions:
-    load_index(preprocessing: str) -> dict
-    get_term_frequency(index: dict, term: str) -> dict
-    get_document_length(index: dict, docid: str) -> int | None
-    get_num_documents(index: dict) -> int
-    get_average_document_length(index: dict) -> float
+The following functions load and use the indexes:
+    load_index(preprocessing: str) -> dict                          # Loads the inverted index for the specified preprocessing approach.
+    get_term_frequency(index: dict, term: str) -> dict              # Returns the term frequency for the specified term across all documents.
+    get_document_length(index: dict, docid: str) -> int | None      # Returns the length of the specified document, or None if the document is not found.
+    get_num_documents(index: dict) -> int                           # Returns the total number of documents in the index.
+    get_average_document_length(index: dict) -> float               # Returns the average document length in the index.
 """
 
 

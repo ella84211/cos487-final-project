@@ -1,6 +1,6 @@
 """
 BM25 retrieval system
-Contains the retrieve() function, which retrieves documents from an index using the BM25 algorithm.
+Contains the retrieve() function, which retrieves documents for a given query using the BM25 algorithm.
 """
 
 import math
