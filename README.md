@@ -33,4 +33,4 @@ Then clean the data. This splits every answer and topic into text and formulas, 
 python -m src.preprocessing.clean
 ```
 
-See [`src/preprocessing/README.md`](src/preprocessing/README.md) for the preprocessing approaches and [`src/README.md`](src/README.md) for the shared utilities.
+See [`src/preprocessing/README.md`](src/preprocessing/README.md) for the preprocessing approaches, [`src/README.md`](src/README.md) for the shared utilities, and [`src/retrieval/README.md`](src/retrieval/README.md) for the indexing and retrieval models.
