@@ -10,7 +10,7 @@ For with_context and without_context, the semantic description files must be spe
 data/semantic_descriptions/semantic_desc_no_context.json.
 
 Example usage:
-    python -m src.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
+    python -m src.retrieval.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
 
 The following functions load and use the indexes:
     load_index(preprocessing: str) -> dict                          # Loads the inverted index for the specified preprocessing approach.
