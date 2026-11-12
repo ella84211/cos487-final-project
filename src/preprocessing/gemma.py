@@ -64,11 +64,16 @@ def generate(messages: list,
             temperature: float = 1.0,
             top_p: float = 0.95,
             top_k: int = 64,
-            max_new_tokens: int = 512) -> str:
+            max_new_tokens: int = 512,
+            batch_size: int = 1) -> str | list[str]:
     """Generates a response from the model based on the provided messages.
-    
+
+    One conversation uses the assistant model. A list of conversations is padded
+    and generated ``batch_size`` at a time, without the assistant model, which
+    only supports one conversation. The batched return value keeps that order.
+
     Args:
-        messages (list[dict]): A list of messages, where each message is a dictionary containing 'role' and 'content'.
+        messages (list[dict] | list[list[dict]]): One conversation, or a list of them.
         model (AutoModelForCausalLM): The main model to generate the response.
         processor (AutoProcessor): The processor to handle tokenization and decoding.
         assistant (AutoModelForCausalLM, optional): The assistant model to assist in generation. Defaults to None.
@@ -76,11 +81,23 @@ def generate(messages: list,
         top_p (float, optional): Top-p sampling parameter. Defaults to 0.95.
         top_k (int, optional): Top-k sampling parameter. Defaults to 64.
         max_new_tokens (int, optional): Maximum number of new tokens to generate. Defaults to 512.
-        
+        batch_size (int, optional): Conversations per forward pass. Defaults to 1.
+
     Returns:
-        str: The generated response as a string.
+        str | list[str]: The generated response, or one per conversation.
     """
-    
+    if messages and isinstance(messages[0], list):
+        return _generate_batch(
+            messages,
+            model=model,
+            processor=processor,
+            temperature=temperature,
+            top_p=top_p,
+            top_k=top_k,
+            max_new_tokens=max_new_tokens,
+            batch_size=batch_size,
+        )
+
     text = processor.apply_chat_template(
         messages,
         tokenize=False,
@@ -116,6 +133,80 @@ def generate(messages: list,
     del outputs, generated_tokens, inputs
     torch.cuda.empty_cache()
 
+    try:
+        parsed_response = processor.parse_response(response)
+
+        if isinstance(parsed_response, dict) and "content" in parsed_response:
+            return parsed_response["content"]
+        elif isinstance(parsed_response, list) and len(parsed_response) > 0:
+            last_turn = parsed_response[-1]
+            if isinstance(last_turn, dict) and "content" in last_turn:
+                return last_turn["content"]
+
+        return parsed_response if parsed_response else response
+    except Exception:
+        return response
+
+
+def _generate_batch(conversations: list,
+                    model: AutoModelForCausalLM,
+                    processor: AutoProcessor,
+                    temperature: float,
+                    top_p: float,
+                    top_k: int,
+                    max_new_tokens: int,
+                    batch_size: int) -> list[str]:
+    """Generate one reply per conversation. Does not use the assistant model."""
+    if not temperature or temperature < 0:
+        temperature = 1.0
+    if not top_p or top_p <= 0 or top_p > 1:
+        top_p = 0.95
+    if not max_new_tokens or max_new_tokens <= 0:
+        max_new_tokens = 512
+    if batch_size < 1:
+        batch_size = 1
+
+    tokenizer = getattr(processor, "tokenizer", None)
+    if tokenizer is not None:
+        tokenizer.padding_side = "left"
+    pad_token_id = getattr(tokenizer, "pad_token_id", None)
+
+    replies = []
+    for start in range(0, len(conversations), batch_size):
+        chunk = conversations[start:start + batch_size]
+        texts = [
+            processor.apply_chat_template(conversation, tokenize=False, add_generation_prompt=True)
+            for conversation in chunk
+        ]
+        inputs = processor(text=texts, return_tensors="pt", padding=True).to(model.device)
+        input_len = inputs["input_ids"].shape[-1]
+        gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "top_k": top_k,
+            "use_cache": True,
+        }
+        if pad_token_id is not None:
+            gen_kwargs["pad_token_id"] = pad_token_id
+
+        with torch.inference_mode():
+            outputs = model.generate(**inputs, **gen_kwargs)
+
+        for row in outputs:
+            generated = row[input_len:]
+            if pad_token_id is not None:
+                end = generated.shape[-1]
+                while end > 0 and generated[end - 1].item() == pad_token_id:
+                    end -= 1
+                generated = generated[:end]
+            response = processor.decode(generated, skip_special_tokens=False)
+            replies.append(_reply_text(processor, response))
+        del outputs, inputs
+    return replies
+
+
+def _reply_text(processor: AutoProcessor, response: str) -> str:
     try:
         parsed_response = processor.parse_response(response)
 

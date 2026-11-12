@@ -66,7 +66,7 @@ def by_detex(source: str | Path | list, out: str | Path = TRANSLATIONS_DETEX) ->
     return _detex(source if "$" in source else f"${source}$") or source
 
 
-def by_llm(source: str | Path | list, out: str | Path = TRANSLATIONS_LLM) -> dict | str:
+def by_llm(source: str | Path | list, out: str | Path = TRANSLATIONS_LLM, batch_size: int = 8) -> dict | str:
     """Translate with Gemma and, for a cleaned file, write ``{id: english}``.
 
     Given a cleaned ``.jsonl`` file or a list of them, writes ``out`` and returns that dictionary.
@@ -74,7 +74,7 @@ def by_llm(source: str | Path | list, out: str | Path = TRANSLATIONS_LLM) -> dic
     when there is none. The model loads on the first call and stays loaded.
     """
     if isinstance(source, list) or _is_file(source):
-        return _save(_llm, source, Path(out))
+        return _save(_llm, source, Path(out), translate_batch=_llm_many, batch_size=batch_size)
     return _llm(source) or source
 
 
@@ -105,13 +105,51 @@ def _llm(latex: str) -> str | None:
         assistant=assistant,
         max_new_tokens=64,
     )
+    return _finish_llm(reply)
+
+
+def _llm_many(formulas: list[str], batch_size: int) -> list[str | None]:
+    """Translate distinct formulas in one batched Gemma call."""
+    from src.preprocessing.gemma import generate
+
+    model, _, processor = _gemma()
+    indexes = []
+    conversations = []
+    results: list[str | None] = [None] * len(formulas)
+    for i, latex in enumerate(formulas):
+        if len(latex) > TRUNCATE_LENGTH:
+            continue
+        indexes.append(i)
+        conversations.append([
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Translate this LaTeX formula to English: {latex}"},
+        ])
+    if not conversations:
+        return results
+    replies = generate(
+        messages=conversations,
+        model=model,
+        processor=processor,
+        max_new_tokens=64,
+        batch_size=batch_size,
+    )
+    for i, reply in zip(indexes, replies):
+        results[i] = _finish_llm(reply)
+    return results
+
+
+def _finish_llm(reply: str | None) -> str | None:
+    if not reply:
+        return None
     if "\\" in reply:
         reply = _detex(reply) or reply
     return reply.replace("$", "")
 
 
-def _save(translate, source: str | Path | list, out: Path) -> dict:
+def _save(translate, source: str | Path | list, out: Path, translate_batch=None, batch_size: int = 1) -> dict:
     """Translate every formula in each cleaned row and write ``{id: english}``."""
+    if translate_batch is not None:
+        return _save_batched(translate_batch, source, out, batch_size)
     translate = cache(translate)
     results = {}
     try:
@@ -129,6 +167,66 @@ def _save(translate, source: str | Path | list, out: Path) -> dict:
                         english = translate(formula["latex"])
                         parts.append(english.strip() if english and english.strip() else f"${formula['latex']}$")
                     results[doc_id] = " ".join(parts)
+        _write(results, out)
+        print(f"Results saved to {out}.")
+        return results
+    except (Exception, KeyboardInterrupt):
+        _write(results, out)
+        print(f"Partial results saved to {out}.")
+        raise
+
+
+def _save_batched(translate_batch, source: str | Path | list, out: Path, batch_size: int) -> dict:
+    """Like ``_save``, but translates new formulas in groups of ``batch_size``."""
+    cache = {}
+    results = {}
+    held = []
+    pending = []
+    pending_seen = set()
+
+    def render(latexes):
+        parts = []
+        for latex in latexes:
+            english = cache.get(latex)
+            parts.append(english.strip() if english and english.strip() else f"${latex}$")
+        return " ".join(parts)
+
+    def flush():
+        if pending:
+            translated = translate_batch(pending, batch_size)
+            if len(translated) != len(pending):
+                raise RuntimeError(f"Expected {len(pending)} translations, got {len(translated)}.")
+            for latex, english in zip(pending, translated):
+                cache[latex] = english
+            pending.clear()
+            pending_seen.clear()
+        for doc_id, latexes in held:
+            results[doc_id] = render(latexes)
+        held.clear()
+
+    try:
+        for path in source if isinstance(source, list) else [source]:
+            with open(path, encoding="utf-8") as file:
+                for line in tqdm(file, desc=Path(path).name):
+                    row = json.loads(line)
+                    doc_id = str(row.pop("id"))
+                    pieces = [piece for field in row.values() if isinstance(field, list) for piece in field]
+                    formulas = get_formulas(pieces)
+                    if not formulas:
+                        continue
+                    latexes = [formula["latex"] for formula in formulas]
+                    for latex in latexes:
+                        if latex in cache or latex in pending_seen:
+                            continue
+                        pending.append(latex)
+                        pending_seen.add(latex)
+                    if pending:
+                        held.append((doc_id, latexes))
+                        if len(pending) >= batch_size:
+                            flush()
+                    else:
+                        results[doc_id] = render(latexes)
+        flush()
         _write(results, out)
         print(f"Results saved to {out}.")
         return results
@@ -157,10 +255,7 @@ def main():
     parser.add_argument("--detex", action="store_true", help="Translate with PyDetex. This is the default.")
     parser.add_argument("--answers", action="store_true", help="Translate answers.")
     parser.add_argument("--topics", action="store_true", help="Translate topics.")
-
-
-    # parser.add_argument("--cleaned_file", type=str, default=CLEANED_ANSWERS, help="Cleaned answers JSONL file.")
-    # parser.add_argument("--cleaned_topics_files", nargs="*", default=CLEANED_TOPICS, help="Cleaned topic JSONL files.")
+    parser.add_argument("--batch_size", type=int, default=8, help="Formulas per Gemma forward pass. Used with --llm.")
     args = parser.parse_args()
 
     run_detex = args.detex or not args.llm
@@ -169,13 +264,13 @@ def main():
     do_topics = args.topics or not args.answers
 
     if run_detex and do_answers:
-        by_detex(args.cleaned_file, TRANSLATIONS_DETEX)
+        by_detex(CLEANED_ANSWERS, TRANSLATIONS_DETEX)
     if run_detex and do_topics:
-        by_detex(args.cleaned_topics_files, TRANSLATIONS_DETEX_TOPICS)
+        by_detex(CLEANED_TOPICS, TRANSLATIONS_DETEX_TOPICS)
     if run_llm and do_answers:
-        by_llm(args.cleaned_file, TRANSLATIONS_LLM)
+        by_llm(CLEANED_ANSWERS, TRANSLATIONS_LLM, batch_size=args.batch_size)
     if run_llm and do_topics:
-        by_llm(args.cleaned_topics_files, TRANSLATIONS_LLM_TOPICS)
+        by_llm(CLEANED_TOPICS, TRANSLATIONS_LLM_TOPICS, batch_size=args.batch_size)
 
 
 if __name__ == "__main__":
