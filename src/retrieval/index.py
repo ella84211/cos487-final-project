@@ -35,20 +35,19 @@ from nltk.corpus import stopwords
 
 from src.preprocessing.baseline_approaches import with_latex, without_latex
 from src.preprocessing.latex2eng import TRANSLATIONS_DETEX, TRANSLATIONS_LLM
-from src.utils import load
+from src.utils import CLEANED_ANSWERS, DATA_DIR, TRANSLATION_DIR, load
 
 
-INDEX_DIR = os.path.join("data", "indexes")
+INDEX_DIR = DATA_DIR / "indexes"
 
 PREPROCESSING_OPTIONS = {
-    "by_detex": "data/translations/by_detex.json",
-    "by_llm": "data/translations/by_llm.json",
-    "without_context": "data/translations/semantic_desc_no_context.json",
-    "with_context": "data/translations/semantic_desc_with_context.json",
+    "by_detex": TRANSLATION_DIR / "by_detex.json",
+    "by_llm": TRANSLATION_DIR / "by_llm.json",
+    "without_context": TRANSLATION_DIR / "semantic_desc_no_context.json",
+    "with_context": TRANSLATION_DIR / "semantic_desc_with_context.json",
     "with_latex": with_latex,
     "without_latex": without_latex,
 }
-
 
 nltk_data_dir = Path.home() / ".cache" / "cos487-nltk"
 nltk_data_dir.mkdir(parents=True, exist_ok=True)
@@ -83,7 +82,7 @@ def split_words(text: str) -> list[str]:
     ]
 
 
-def build_index(preprocessing: str, source: str | Path, force_rebuild: bool=False):
+def build_index(preprocessing: str, force_rebuild: bool=False):
     """Builds an inverted index for the given preprocessing option."""
     if preprocessing not in PREPROCESSING_OPTIONS:
         raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(PREPROCESSING_OPTIONS.keys())}")
@@ -100,9 +99,13 @@ def build_index(preprocessing: str, source: str | Path, force_rebuild: bool=Fals
         "terms": terms,
     }
     if preprocessing in ("with_latex", "without_latex"):
-        data = PREPROCESSING_OPTIONS[preprocessing](source)
+        if not CLEANED_ANSWERS.exists():
+            raise FileNotFoundError(f"Cleaned data not found. Run `src.preprocessing.clean.py` prior to indexing.")
+        data = PREPROCESSING_OPTIONS[preprocessing](CLEANED_ANSWERS)
+
     else:
-        data = load(source, PREPROCESSING_OPTIONS[preprocessing])
+        data = load(PREPROCESSING_OPTIONS[preprocessing])
+
     for docid, text in tqdm(data.items(), desc=f"Building {preprocessing} index"):
         words = split_words(text)
         document_lengths[docid] = len(words)
@@ -196,7 +199,7 @@ def main():
         INDEX_DIR = args.index_dir
     os.makedirs(INDEX_DIR, exist_ok=True)
     for preprocessing in args.approaches:
-        build_index(preprocessing, source=args.cleaned_data, force_rebuild=args.force)
+        build_index(preprocessing, force_rebuild=args.force)
 
 
 if __name__ == "__main__":

@@ -23,24 +23,16 @@ from pathlib import Path
 from pydetex.pipelines import strict_eqn
 from tqdm import tqdm
 
-from src.utils import get_formulas
+from src.utils import CLEANED_ANSWERS, CLEANED_TOPICS, TRANSLATION_DIR, get_formulas
 
 
 # Formulas longer than this many characters are not sent to the model.
 TRUNCATE_LENGTH = 1000
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-CLEANED_ANSWERS = DATA_DIR / "clean" / "answers.jsonl"
-CLEANED_TOPICS = [
-    DATA_DIR / "clean" / "topics_2020.jsonl",
-    DATA_DIR / "clean" / "topics_2021.jsonl",
-    DATA_DIR / "clean" / "topics_2022.jsonl",
-]
-
-TRANSLATIONS_DETEX = DATA_DIR / "translations" / "by_detex.json"
-TRANSLATIONS_LLM = DATA_DIR / "translations" / "by_llm.json"
-TRANSLATIONS_DETEX_TOPICS = DATA_DIR / "translations" / "by_detex_topics.json"
-TRANSLATIONS_LLM_TOPICS = DATA_DIR / "translations" / "by_llm_topics.json"
+TRANSLATIONS_DETEX = TRANSLATION_DIR / "by_detex.json"
+TRANSLATIONS_LLM = TRANSLATION_DIR / "by_llm.json"
+TRANSLATIONS_DETEX_TOPICS = TRANSLATION_DIR / "by_detex_topics.json"
+TRANSLATIONS_LLM_TOPICS = TRANSLATION_DIR / "by_llm_topics.json"
 
 SYSTEM_PROMPT = (
     "You are a skilled mathematician. Translate the LaTeX formula into natural language. "

@@ -14,7 +14,7 @@ from src.utils import get_formulas, get_text, load, splice
 latex = [formula["latex"] for formula in get_formulas(pieces)]  # the formulas to translate
 text = get_text(pieces)                                         # the text around them
 original = splice(pieces)                                       # text with the original $...$ formulas
-rows = load("data/clean/answers.jsonl", "data/translations/by_detex.json")
+rows = load("data/translations/by_detex.json")
 ```
 
 ### `get_formulas(pieces)`
@@ -29,6 +29,6 @@ Returns the text pieces, in order, with no formulas.
 
 Joins pieces into text. Each formula is replaced by `translate(formula)`, or kept as `$latex$` when that returns None or there is no `translate`.
 
-### `load(source, translations)`
+### `load(translations)`
 
-Drops the formulas from each cleaned row and appends the saved translation for that id. `source` is a `.jsonl` file or a list of them. A topic's text is its title and question. `translations` is a JSON object of `{id: text}`.
+Drops the formulas from each row of `data/clean/answers.jsonl` and appends the saved translation for that id. `translations` is a JSON object of `{id: text}`.

@@ -26,16 +26,14 @@ from lxml import etree
 from lxml import html as lxml_html
 from tqdm import tqdm
 
-from src.utils import Piece
+from src.utils import CLEANED_DIR, CLEANED_TOPICS, DATA_DIR, TOPIC_YEARS, Piece
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ARQMathCode"))
 from Entity_Parser_Record.post_parser_record import PostParserRecord
 from topic_file_reader import TopicReader
 
 
-POSTS = Path("data/Posts.V1.3.xml")
-TOPIC_YEARS = (2020, 2021, 2022)
-CLEAN_DIR = Path("data/clean")
+POSTS = DATA_DIR / "Posts.V1.3.xml"
 
 # Control characters that lxml rejects in text, written directly or as ``&#1;``.
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -58,17 +56,17 @@ def clean_answers() -> None:
     print(f"Reading {POSTS}...")
     answers = PostParserRecord(str(POSTS)).map_just_answers
     rows = ({"id": i, "body": split_formulas(a.body)} for i, a in tqdm(answers.items(), desc="answers"))
-    _write_lines(CLEAN_DIR / "answers.jsonl", rows)
+    _write_lines(CLEANED_DIR / "answers.jsonl", rows)
 
 
 def clean_topics() -> None:
-    for year in TOPIC_YEARS:
-        topics = TopicReader(f"data/topics/Topics_Task1_{year}.xml").map_topics
+    for year, path in zip(TOPIC_YEARS, CLEANED_TOPICS):
+        topics = TopicReader(str(DATA_DIR / "topics" / f"Topics_Task1_{year}.xml")).map_topics
         rows = (
             {"id": i, "title": split_formulas(t.title), "question": split_formulas(t.question)}
             for i, t in topics.items()
         )
-        _write_lines(CLEAN_DIR / f"topics_{year}.jsonl", rows)
+        _write_lines(path, rows)
 
 
 def split_formulas(html: str) -> list[Piece]:

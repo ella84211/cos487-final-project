@@ -33,23 +33,16 @@ from pathlib import Path
 from pydetex.pipelines import strict_eqn
 
 from src.preprocessing.gemma import load_model, generate
-from src.utils import splice, get_formulas, get_text
+from src.utils import CLEANED_ANSWERS, CLEANED_TOPICS, TRANSLATION_DIR, get_formulas, get_text, splice
 
 
 # Number of characters to truncate the context to
 TRUNCATE_LENGTH = 1000
 
-data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-CLEANED_DATA = data_dir / "clean" / "answers.jsonl"
-CLEANED_TOPICS_DATA = [
-    data_dir / "clean" / "topics_2020.jsonl",
-    data_dir / "clean" / "topics_2021.jsonl",
-    data_dir / "clean" / "topics_2022.jsonl",
-]
-SEMANTIC_DESC_CONTEXT = data_dir / "translations" / "semantic_desc_with_context.json"
-SEMANTIC_DESC_NO_CONTEXT = data_dir / "translations" / "semantic_desc_no_context.json"
-SEMANTIC_DESC_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_with_context_topics.json"
-SEMANTIC_DESC_NO_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_no_context_topics.json"
+SEMANTIC_DESC_CONTEXT = TRANSLATION_DIR / "semantic_desc_with_context.json"
+SEMANTIC_DESC_NO_CONTEXT = TRANSLATION_DIR / "semantic_desc_no_context.json"
+SEMANTIC_DESC_CONTEXT_TOPICS = TRANSLATION_DIR / "semantic_desc_with_context_topics.json"
+SEMANTIC_DESC_NO_CONTEXT_TOPICS = TRANSLATION_DIR / "semantic_desc_no_context_topics.json"
 
 MESSAGES_NO_CONTEXT = [
     {
@@ -91,7 +84,7 @@ MESSAGES_WITH_CONTEXT = [
 ]
 
 
-def with_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DESC_CONTEXT) -> dict:
+def with_context(source: Path = CLEANED_ANSWERS, semantic_desc: Path = SEMANTIC_DESC_CONTEXT) -> dict:
     """Translate with Gemma, using context.
 
     Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
@@ -104,7 +97,7 @@ def with_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DES
 
 
 
-def without_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT) -> dict:
+def without_context(source: Path = CLEANED_ANSWERS, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT) -> dict:
     """Translate with Gemma, without using context.
 
     Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
@@ -116,7 +109,7 @@ def without_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_
     return _add_descriptions(source, semantic_desc)
 
 
-def with_context_topics(source: list[Path] = CLEANED_TOPICS_DATA, semantic_desc: Path = SEMANTIC_DESC_CONTEXT_TOPICS) -> dict:
+def with_context_topics(source: list[Path] = CLEANED_TOPICS, semantic_desc: Path = SEMANTIC_DESC_CONTEXT_TOPICS) -> dict:
     """Translate with Gemma, using context, for topics.
 
     Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
@@ -131,7 +124,7 @@ def with_context_topics(source: list[Path] = CLEANED_TOPICS_DATA, semantic_desc:
     return results
 
 
-def without_context_topics(source: list[Path] = CLEANED_TOPICS_DATA, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT_TOPICS) -> dict:
+def without_context_topics(source: list[Path] = CLEANED_TOPICS, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT_TOPICS) -> dict:
     """Translate with Gemma, without using context, for topics.
 
     Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
@@ -241,8 +234,8 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
 
 def main():
     parser = argparse.ArgumentParser(description="Process LaTeX formulas and extract semantic meanings.")
-    parser.add_argument("--cleaned_file", type=str, default=CLEANED_DATA, help="Path to the cleaned JSONL file containing answers.")
-    parser.add_argument("--cleaned_topics_files", nargs="*", default=CLEANED_TOPICS_DATA, help="Paths to the cleaned JSONL files containing topics.")
+    parser.add_argument("--cleaned_file", type=str, default=CLEANED_ANSWERS, help="Path to the cleaned JSONL file containing answers.")
+    parser.add_argument("--cleaned_topics_files", nargs="*", default=CLEANED_TOPICS, help="Paths to the cleaned JSONL files containing topics.")
     parser.add_argument("--output_file_no_context", type=str, default=SEMANTIC_DESC_NO_CONTEXT, help="Path to the output JSON file to save results without context.")
     parser.add_argument("--output_file_context", type=str, default=SEMANTIC_DESC_CONTEXT, help="Path to the output JSON file to save results with context.")
     parser.add_argument("--output_topics_file_no_context", type=str, default=SEMANTIC_DESC_NO_CONTEXT_TOPICS, help="Path to the output JSON file to save results for topics without context.")
