@@ -168,7 +168,7 @@ def main():
     approaches = list(PREPROCESSING_OPTIONS.keys())
     parser = argparse.ArgumentParser(description="Build inverted indexes for the corpus.")
     parser.add_argument("--force", action="store_true", help="Force rebuild of indexes even if they already exist.")
-    parser.add_argument("--out", type=str, help="Directory to save the indexes.")
+    parser.add_argument("--index_dir", type=str, help="Directory to save the indexes.")
 
     parser.add_argument(
         "--approaches",
@@ -183,9 +183,9 @@ def main():
     )
 
     args = parser.parse_args()
-    if args.out:
+    if args.index_dir:
         global INDEX_DIR
-        INDEX_DIR = args.out
+        INDEX_DIR = args.index_dir
     os.makedirs(INDEX_DIR, exist_ok=True)
     for preprocessing in args.approaches:
         build_index(preprocessing, force_rebuild=args.force)

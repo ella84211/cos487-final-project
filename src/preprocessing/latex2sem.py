@@ -151,12 +151,12 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
                 results[id] = semantic_meaning.replace("$", "")
 
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Results saved to {output_file}.")
         except (Exception, KeyboardInterrupt) as e:
             print(f"An error occurred: {e}")
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Partial results saved to {output_file}.")
 
 
