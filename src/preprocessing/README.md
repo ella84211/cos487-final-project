@@ -14,59 +14,49 @@ It writes `answers.jsonl` with `id` and `body`, and `topics_<year>.jsonl` with `
 
 ## latex2eng
 
-Translates each LaTeX formula into English and splices it back into the text.
+Translates each LaTeX formula into English and writes `{id: english}` JSON. Indexing appends that file with `load`.
+
+```bash
+python -m src.preprocessing.latex2eng                 # PyDetex, answers and topics
+python -m src.preprocessing.latex2eng --llm           # Gemma instead of PyDetex
+python -m src.preprocessing.latex2eng --detex --llm   # both
+python -m src.preprocessing.latex2eng --answers       # answers only
+```
+
+Answer files are `data/translations/by_detex.json` and `data/translations/by_llm.json`. Topic files are `data/translations/by_detex_topics.json` and `data/translations/by_llm_topics.json`.
 
 ```python
 from src.preprocessing import latex2eng
 
-answers = latex2eng.by_detex("data/clean/answers.jsonl")     # {answer_id: text}
-topics = latex2eng.by_detex("data/clean/topics_2020.jsonl")  # {topic_id: text}
-half = latex2eng.by_detex(r"\frac{1}{2}")                    # "½"
+latex2eng.by_detex("data/clean/answers.jsonl")   # writes by_detex.json, returns {id: english}
+half = latex2eng.by_detex(r"\frac{1}{2}")        # "½", writes nothing
 ```
 
-### `by_detex(source)`
+### `by_detex(source, out=...)`
 
-Translates with PyDetex. Given a cleaned `.jsonl` file, returns `{id: text}` for every row in it. A topic's text is its title and question joined. Given a string, returns its translation. The string can be a bare formula, or text with `$`-delimited formulas such as an LLM reply.
+Translates with PyDetex. A cleaned `.jsonl` file, or a list of them, is saved to `out` as `{id: english}` and returned. A string is translated and not saved. A formula with no translation is stored as `$latex$`.
 
-### `by_llm(source)`
+### `by_llm(source, out=...)`
 
-Translates with Gemma. Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`. Given one LaTeX formula, returns its translation. The model loads on the first call and stays loaded.
-
-A formula with no translation is kept as its original LaTeX.
+Same as `by_detex`, with Gemma. The model loads on the first call and stays loaded.
 
 ## latex2sem
 
-Generates natural language semantic descriptions of formulas using Gemma. Before using `with_context()` or `without_context()`, or the corresponding functions for topics, generate the semantic descriptions by running this file from the repository root:
+Generates natural language semantic descriptions of formulas using Gemma and saves `{id: description}` JSON. Indexing appends those files with `load`.
 
 ```bash
 python -m src.preprocessing.latex2sem
 python -m src.preprocessing.latex2sem --context
 ```
 
-This generates the semantic descriptions, both with and without the surrounding text context, for both topics and answers. The descriptions are saved to `data/semantic_descriptions/` as `semantic_desc_no_context.json`, `semantic_desc_no_context_topics.json`, `semantic_desc_with_context.json`, and `semantic_desc_with_context_topics.json`. For further arguments, see `latex2sem.py`.
-
-### `with_context(source, semantic_desc)`
-
-Appends the semantic descriptions generated with the surrounding text to each answer's text. Given a cleaned `.jsonl` file and the semantic descriptions, returns the same dictionary as `by_detex`.
-
-### `without_context(source, semantic_desc)`
-
-Appends the semantic descriptions generated without the surrounding text to each answer's text. Given a cleaned `.jsonl` file and the semantic descriptions, returns the same dictionary as `by_detex`.
-
-### `with_context_topics(source, semantic_desc)`
-
-Appends the semantic descriptions generated with the surrounding text to each topic's text. Given a list of cleaned `.jsonl` files and the semantic descriptions (in one file), returns the same dictionary as `by_detex`.
-
-### `without_context_topics(source, semantic_desc)`
-
-Appends the semantic descriptions generated without the surrounding text to each topic's text. Given a list of cleaned `.jsonl` files and the semantic descriptions (in one file), returns the same dictionary as `by_detex`.
+The descriptions are saved to `data/semantic_descriptions/` as `semantic_desc_no_context.json`, `semantic_desc_no_context_topics.json`, `semantic_desc_with_context.json`, and `semantic_desc_with_context_topics.json`. For further arguments, see `latex2sem.py`.
 
 ## baseline_approaches
 
 ### `with_latex(source)`
 
-Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`, but with the original LaTeX formulas instead of their English translations.
+Given a cleaned `.jsonl` file, returns `{id: text}` with the original formulas kept.
 
 ### `without_latex(source)`
 
-Given a cleaned `.jsonl` file, returns the same dictionary as `by_detex`, but with the original LaTeX formulas removed from the text.
+Given a cleaned `.jsonl` file, returns `{id: text}` with the formulas removed.
