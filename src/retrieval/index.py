@@ -12,7 +12,7 @@ data/semantic_descriptions/semantic_desc_with_context.json, and
 data/semantic_descriptions/semantic_desc_no_context.json.
 
 Example usage:
-    python -m src.retrieval.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
+    python -m src.retrieval.index --force --approaches by_detex without_context with_latex
 
 The following functions load and use the indexes:
     load_index(preprocessing: str) -> dict                          # Loads the inverted index for the specified preprocessing approach.
@@ -33,8 +33,7 @@ from pathlib import Path
 from tqdm import tqdm
 from nltk.corpus import stopwords
 
-from src.preprocessing.baseline_approaches import with_latex, without_latex
-from src.preprocessing.latex2eng import TRANSLATIONS_DETEX, TRANSLATIONS_LLM
+from src.preprocessing.baseline import with_latex, without_latex
 from src.utils import CLEANED_ANSWERS, DATA_DIR, TRANSLATION_DIR, load
 
 
@@ -101,7 +100,7 @@ def build_index(preprocessing: str, force_rebuild: bool=False):
     }
     if preprocessing in ("with_latex", "without_latex"):
         if not CLEANED_ANSWERS.exists():
-            raise FileNotFoundError(f"Cleaned data not found. Run `src.preprocessing.clean.py` prior to indexing.")
+            raise FileNotFoundError(f"Cleaned data not found. Run `src/preprocessing/clean.py` prior to indexing.")
         data = PREPROCESSING_OPTIONS[preprocessing](CLEANED_ANSWERS)
 
     else:
