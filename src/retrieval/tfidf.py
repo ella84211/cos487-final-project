@@ -5,7 +5,7 @@ Contains the retrieve() function, which retrieves documents for a given query us
 
 import math
 
-from src.index import load_index, get_term_frequency, get_num_documents, split_words, PREPROCESSING_OPTIONS
+from src.retrieval.index import load_index, get_term_frequency, get_num_documents, split_words
 
 
 indexes = {}

@@ -180,14 +180,26 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
 
         try:
             for answer_obj in tqdm(data, desc="Processing answers"):
-                formulas = get_formulas(answer_obj["body"])
+                if "body" in answer_obj:
+                    formulas = get_formulas(answer_obj["body"])
+                    formulas = [formula["latex"] for formula in formulas]
+                elif "title" in answer_obj and "question" in answer_obj:
+                    formulas = get_formulas(answer_obj["title"]) + get_formulas(answer_obj["question"])
+                    formulas = [formula["latex"] for formula in formulas]
+                else:
+                    raise ValueError("Answer object must contain either 'body' or both 'title' and 'question' keys.")
                 if not formulas:
                     continue
                 id = str(answer_obj["id"])
                 results[id] = ""
                 contents = []
                 if use_context:
-                    answer_text = splice(answer_obj["body"])
+                    if "body" in answer_obj:
+                        answer_text = splice(answer_obj["body"])
+                    elif "title" in answer_obj and "question" in answer_obj:
+                        answer_text = splice(answer_obj["title"]) + " " + splice(answer_obj["question"])
+                    else:
+                        raise ValueError("Answer object must contain either 'body' or both 'title' and 'question' keys.")
                     len_answer_text = len(answer_text)
                     i = 1
                     while len_answer_text / i > TRUNCATE_LENGTH:

@@ -33,12 +33,12 @@ from pathlib import Path
 from tqdm import tqdm
 from nltk.corpus import stopwords
 
-from src.preprocessing.baseline_approaches import with_latex, without_latex
-from src.preprocessing.latex2eng import TRANSLATIONS_DETEX, TRANSLATIONS_LLM
+from src.preprocessing.baseline import with_latex, without_latex
 from src.utils import load
 
 
 INDEX_DIR = os.path.join("data", "indexes")
+CLEANED_DATA = os.path.join("data", "clean", "answers.jsonl")
 
 PREPROCESSING_OPTIONS = {
     "by_detex": "data/translations/by_detex.json",
@@ -167,17 +167,6 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force rebuild of indexes even if they already exist.")
     parser.add_argument("--out", type=str, help="Directory to save the indexes.")
 
-    # Commented out for consistency between saved files and repo usage
-    # parser.add_argument("--cleaned_data", type=str, default="data/clean/answers.jsonl", help="Path to the cleaned JSONL file containing answers.")
-    # parser.add_argument("--semantic_desc_with_context", type=str, 
-    #                     default="data/semantic_descriptions/semantic_desc_with_context.json", 
-    #                     help="Path to the JSON file containing semantic descriptions with context.")
-    # parser.add_argument("--semantic_desc_no_context", type=str, 
-    #                     default="data/semantic_descriptions/semantic_desc_no_context.json", 
-    #                     help="Path to the JSON file containing semantic descriptions without context.")
-    # parser.add_argument("--translations_by_detex", type=str, default=str(TRANSLATIONS_DETEX), help="Path to the PyDetex translation JSON.")
-    # parser.add_argument("--translations_by_llm", type=str, default=str(TRANSLATIONS_LLM), help="Path to the Gemma translation JSON.")
-
     parser.add_argument(
         "--approaches",
         nargs="+",
@@ -191,12 +180,12 @@ def main():
     )
 
     args = parser.parse_args()
-    if args.index_dir:
+    if args.out:
         global INDEX_DIR
-        INDEX_DIR = args.index_dir
+        INDEX_DIR = args.out
     os.makedirs(INDEX_DIR, exist_ok=True)
     for preprocessing in args.approaches:
-        build_index(preprocessing, source=args.cleaned_data, force_rebuild=args.force)
+        build_index(preprocessing, source=CLEANED_DATA, force_rebuild=args.force)
 
 
 if __name__ == "__main__":
