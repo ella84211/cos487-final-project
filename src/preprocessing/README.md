@@ -38,7 +38,7 @@ Translates with PyDetex. A cleaned `.jsonl` file, or a list of them, is saved to
 
 ### `by_llm(source, out=...)`
 
-Same as `by_detex`, with Gemma. The model loads on the first call and stays loaded.
+Same as `by_detex`, with Gemma. The model loads on the first call and stays loaded. A document id already in the output file is kept, so stopping a run and starting it again continues from the last saved document. Pass `--force_restart` with `--llm` to translate every document again.
 
 ## latex2sem
 
