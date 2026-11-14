@@ -46,10 +46,10 @@ CLEANED_TOPICS_DATA = [
     data_dir / "clean" / "topics_2021.jsonl",
     data_dir / "clean" / "topics_2022.jsonl",
 ]
-SEMANTIC_DESC_CONTEXT = data_dir / "semantic_descriptions" / "semantic_desc_with_context.json"
-SEMANTIC_DESC_NO_CONTEXT = data_dir / "semantic_descriptions" / "semantic_desc_no_context.json"
-SEMANTIC_DESC_CONTEXT_TOPICS = data_dir / "semantic_descriptions" / "semantic_desc_with_context_topics.json"
-SEMANTIC_DESC_NO_CONTEXT_TOPICS = data_dir / "semantic_descriptions" / "semantic_desc_no_context_topics.json"
+SEMANTIC_DESC_CONTEXT = data_dir / "translations" / "semantic_desc_with_context.json"
+SEMANTIC_DESC_NO_CONTEXT = data_dir / "translations" / "semantic_desc_no_context.json"
+SEMANTIC_DESC_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_with_context_topics.json"
+SEMANTIC_DESC_NO_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_no_context_topics.json"
 
 MESSAGES_NO_CONTEXT = [
     {

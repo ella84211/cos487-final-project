@@ -5,8 +5,10 @@ Force rebuild can be enabled with the --force flag.
 Preprocessing approaches can be selected with the --approaches flag, or all six will be built by default. 
 The cleaned data file must be specified with the --cleaned_data flag. The default cleaned data file is data/clean/answers.jsonl. 
 
-For with_context and without_context, the semantic description files must be specified with the --semantic_desc_with_context and 
---semantic_desc_no_context flags. They default to data/semantic_descriptions/semantic_desc_with_context.json and 
+by_detex, by_llm, with_context, and without_context are indexed with load(). That drops the formulas
+from the cleaned file and appends the saved {id: text} translation file. The translation files default to
+data/translations/by_detex.json, data/translations/by_llm.json,
+data/semantic_descriptions/semantic_desc_with_context.json, and
 data/semantic_descriptions/semantic_desc_no_context.json.
 
 Example usage:
@@ -31,18 +33,18 @@ from pathlib import Path
 from tqdm import tqdm
 from nltk.corpus import stopwords
 
-from src.preprocessing.latex2eng import by_llm, by_detex
-from src.preprocessing.latex2sem import with_context, without_context
 from src.preprocessing.baseline_approaches import with_latex, without_latex
+from src.preprocessing.latex2eng import TRANSLATIONS_DETEX, TRANSLATIONS_LLM
+from src.utils import load
 
 
 INDEX_DIR = os.path.join("data", "indexes")
 
 PREPROCESSING_OPTIONS = {
-    "by_detex": by_detex,
-    "by_llm": by_llm,
-    "without_context": without_context,
-    "with_context": with_context,
+    "by_detex": "data/translations/by_detex.json",
+    "by_llm": "data/translations/by_llm.json",
+    "without_context": "data/translations/semantic_desc_no_context.json",
+    "with_context": "data/translations/semantic_desc_with_context.json",
     "with_latex": with_latex,
     "without_latex": without_latex,
 }
@@ -81,7 +83,7 @@ def split_words(text: str) -> list[str]:
     ]
 
 
-def build_index(preprocessing: str, source: str | Path, semantic_desc: str | Path = None, force_rebuild: bool=False):
+def build_index(preprocessing: str, source: str | Path, force_rebuild: bool=False):
     """Builds an inverted index for the given preprocessing option."""
     if preprocessing not in PREPROCESSING_OPTIONS:
         raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(PREPROCESSING_OPTIONS.keys())}")
@@ -97,7 +99,10 @@ def build_index(preprocessing: str, source: str | Path, semantic_desc: str | Pat
         "doc_lens": document_lengths,
         "terms": terms,
     }
-    data = PREPROCESSING_OPTIONS[preprocessing](source) if semantic_desc is None else PREPROCESSING_OPTIONS[preprocessing](source, semantic_desc)
+    if preprocessing in ("with_latex", "without_latex"):
+        data = PREPROCESSING_OPTIONS[preprocessing](source)
+    else:
+        data = load(source, PREPROCESSING_OPTIONS[preprocessing])
     for docid, text in tqdm(data.items(), desc=f"Building {preprocessing} index"):
         words = split_words(text)
         document_lengths[docid] = len(words)
@@ -160,14 +165,18 @@ def main():
     approaches = list(PREPROCESSING_OPTIONS.keys())
     parser = argparse.ArgumentParser(description="Build inverted indexes for the corpus.")
     parser.add_argument("--force", action="store_true", help="Force rebuild of indexes even if they already exist.")
-    parser.add_argument("--index_dir", type=str, help="Directory to save the indexes.")
-    parser.add_argument("--cleaned_data", type=str, default="data/clean/answers.jsonl", help="Path to the cleaned JSONL file containing answers.")
-    parser.add_argument("--semantic_desc_with_context", type=str, 
-                        default="data/semantic_descriptions/semantic_desc_with_context.json", 
-                        help="Path to the JSON file containing semantic descriptions with context.")
-    parser.add_argument("--semantic_desc_no_context", type=str, 
-                        default="data/semantic_descriptions/semantic_desc_no_context.json", 
-                        help="Path to the JSON file containing semantic descriptions without context.")
+    parser.add_argument("--out", type=str, help="Directory to save the indexes.")
+
+    # Commented out for consistency between saved files and repo usage
+    # parser.add_argument("--cleaned_data", type=str, default="data/clean/answers.jsonl", help="Path to the cleaned JSONL file containing answers.")
+    # parser.add_argument("--semantic_desc_with_context", type=str, 
+    #                     default="data/semantic_descriptions/semantic_desc_with_context.json", 
+    #                     help="Path to the JSON file containing semantic descriptions with context.")
+    # parser.add_argument("--semantic_desc_no_context", type=str, 
+    #                     default="data/semantic_descriptions/semantic_desc_no_context.json", 
+    #                     help="Path to the JSON file containing semantic descriptions without context.")
+    # parser.add_argument("--translations_by_detex", type=str, default=str(TRANSLATIONS_DETEX), help="Path to the PyDetex translation JSON.")
+    # parser.add_argument("--translations_by_llm", type=str, default=str(TRANSLATIONS_LLM), help="Path to the Gemma translation JSON.")
 
     parser.add_argument(
         "--approaches",
@@ -187,11 +196,7 @@ def main():
         INDEX_DIR = args.index_dir
     os.makedirs(INDEX_DIR, exist_ok=True)
     for preprocessing in args.approaches:
-        if preprocessing in ["with_context", "without_context"]:
-            sem_desc = args.semantic_desc_with_context if preprocessing == "with_context" else args.semantic_desc_no_context
-            build_index(preprocessing, source=args.cleaned_data, semantic_desc=sem_desc, force_rebuild=args.force)
-        else:
-            build_index(preprocessing, source=args.cleaned_data, force_rebuild=args.force)
+        build_index(preprocessing, source=args.cleaned_data, force_rebuild=args.force)
 
 
 if __name__ == "__main__":
