@@ -5,7 +5,7 @@ Contains the retrieve() function, which retrieves documents for a given query us
 
 import math
 
-from src.index import load_index, get_term_frequency, get_num_documents, split_words
+from src.retrieval.index import load_index, get_term_frequency, get_num_documents, split_words
 
 
 indexes = {}
@@ -25,7 +25,10 @@ def retrieve(query: str, preprocessing: str, k: int) -> dict:
         dict: A dictionary containing document IDs as keys with their scores as values
     """
 
-    index = load_index(preprocessing)
+    global indexes
+    if preprocessing not in indexes:
+        indexes[preprocessing] = load_index(preprocessing)
+    index = indexes[preprocessing]
 
     docs = {}
     terms = split_words(query)

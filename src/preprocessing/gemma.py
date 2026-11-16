@@ -143,9 +143,14 @@ def generate(messages: list,
             if isinstance(last_turn, dict) and "content" in last_turn:
                 return last_turn["content"]
 
-        return parsed_response if parsed_response else response
+        if parsed_response:
+            response = parsed_response
     except Exception:
-        return response
+        pass
+    response = response.strip()
+    if response.endswith("<turn|>"):
+        response = response[:-7]
+    return response
 
 
 def _generate_batch(conversations: list,

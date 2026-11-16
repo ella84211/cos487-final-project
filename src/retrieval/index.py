@@ -12,7 +12,7 @@ data/semantic_descriptions/semantic_desc_with_context.json, and
 data/semantic_descriptions/semantic_desc_no_context.json.
 
 Example usage:
-    python -m src.retrieval.index --force --index_dir data/indexes --approaches by_detex without_context with_latex
+    python -m src.retrieval.index --force --approaches by_detex without_context with_latex
 
 The following functions load and use the indexes:
     load_index(preprocessing: str) -> dict                          # Loads the inverted index for the specified preprocessing approach.
@@ -33,12 +33,12 @@ from pathlib import Path
 from tqdm import tqdm
 from nltk.corpus import stopwords
 
-from src.preprocessing.baseline_approaches import with_latex, without_latex
-from src.preprocessing.latex2eng import TRANSLATIONS_DETEX, TRANSLATIONS_LLM
+from src.preprocessing.baseline import with_latex, without_latex
 from src.utils import CLEANED_ANSWERS, DATA_DIR, TRANSLATION_DIR, load
 
 
 INDEX_DIR = DATA_DIR / "indexes"
+
 
 PREPROCESSING_OPTIONS = {
     "by_detex": TRANSLATION_DIR / "by_detex.json",
@@ -100,7 +100,7 @@ def build_index(preprocessing: str, force_rebuild: bool=False):
     }
     if preprocessing in ("with_latex", "without_latex"):
         if not CLEANED_ANSWERS.exists():
-            raise FileNotFoundError(f"Cleaned data not found. Run `src.preprocessing.clean.py` prior to indexing.")
+            raise FileNotFoundError(f"Cleaned data not found. Run `src/preprocessing/clean.py` prior to indexing.")
         data = PREPROCESSING_OPTIONS[preprocessing](CLEANED_ANSWERS)
 
     else:
@@ -168,18 +168,7 @@ def main():
     approaches = list(PREPROCESSING_OPTIONS.keys())
     parser = argparse.ArgumentParser(description="Build inverted indexes for the corpus.")
     parser.add_argument("--force", action="store_true", help="Force rebuild of indexes even if they already exist.")
-    parser.add_argument("--out", type=str, help="Directory to save the indexes.")
-
-    # Commented out for consistency between saved files and repo usage
-    # parser.add_argument("--cleaned_data", type=str, default="data/clean/answers.jsonl", help="Path to the cleaned JSONL file containing answers.")
-    # parser.add_argument("--semantic_desc_with_context", type=str, 
-    #                     default="data/semantic_descriptions/semantic_desc_with_context.json", 
-    #                     help="Path to the JSON file containing semantic descriptions with context.")
-    # parser.add_argument("--semantic_desc_no_context", type=str, 
-    #                     default="data/semantic_descriptions/semantic_desc_no_context.json", 
-    #                     help="Path to the JSON file containing semantic descriptions without context.")
-    # parser.add_argument("--translations_by_detex", type=str, default=str(TRANSLATIONS_DETEX), help="Path to the PyDetex translation JSON.")
-    # parser.add_argument("--translations_by_llm", type=str, default=str(TRANSLATIONS_LLM), help="Path to the Gemma translation JSON.")
+    parser.add_argument("--index_dir", type=str, help="Directory to save the indexes.")
 
     parser.add_argument(
         "--approaches",

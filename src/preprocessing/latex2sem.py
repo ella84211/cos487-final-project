@@ -14,15 +14,11 @@ The cleaned topics files default to the cleaned topic datasets for 2020–2022.
 Use --context to include answer or topic text in the generation prompt.
 
 Run the script as a module from the repository root.
-
 Examples:
     python -m src.preprocessing.latex2sem                           # Process both answers and topics without context
     python -m src.preprocessing.latex2sem --answers                 # Process only answers without context
     python -m src.preprocessing.latex2sem --topics --context        # Process only topics with context
     python -m src.preprocessing.latex2sem --answers --context       # Process only answers with context
-
-The with_context() and without_context() functions return dictionaries
-mapping document IDs to cleaned text augmented with semantic descriptions.
 """
 
 import json
@@ -33,7 +29,7 @@ from pathlib import Path
 from pydetex.pipelines import strict_eqn
 
 from src.preprocessing.gemma import load_model, generate
-from src.utils import CLEANED_ANSWERS, CLEANED_TOPICS, TRANSLATION_DIR, get_formulas, get_text, splice
+from src.utils import CLEANED_ANSWERS, CLEANED_TOPICS, TRANSLATION_DIR, get_formulas, splice
 
 
 # Number of characters to truncate the context to
@@ -84,86 +80,6 @@ MESSAGES_WITH_CONTEXT = [
 ]
 
 
-def with_context(source: Path = CLEANED_ANSWERS, semantic_desc: Path = SEMANTIC_DESC_CONTEXT) -> dict:
-    """Translate with Gemma, using context.
-
-    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    if not _is_file(source):
-        raise ValueError("with_context only supports .jsonl files.")
-    return _add_descriptions(source, semantic_desc)
-
-
-
-def without_context(source: Path = CLEANED_ANSWERS, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT) -> dict:
-    """Translate with Gemma, without using context.
-
-    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    if not _is_file(source):
-        raise ValueError("without_context only supports .jsonl files.")
-    return _add_descriptions(source, semantic_desc)
-
-
-def with_context_topics(source: list[Path] = CLEANED_TOPICS, semantic_desc: Path = SEMANTIC_DESC_CONTEXT_TOPICS) -> dict:
-    """Translate with Gemma, using context, for topics.
-
-    Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    results = {}
-    for file in source:
-        if not _is_file(file):
-            raise ValueError("with_context_topics only supports .jsonl files.")
-        results.update(_add_descriptions(file, semantic_desc))
-    return results
-
-
-def without_context_topics(source: list[Path] = CLEANED_TOPICS, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT_TOPICS) -> dict:
-    """Translate with Gemma, without using context, for topics.
-
-    Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    results = {}
-    for file in source:
-        if not _is_file(file):
-            raise ValueError("without_context_topics only supports .jsonl files.")
-        results.update(_add_descriptions(file, semantic_desc))
-    return results
-
-
-def _add_descriptions(source: Path, semantic_desc: Path) -> dict:
-    if type(semantic_desc) is str:
-        semantic_desc = Path(semantic_desc)
-    if not semantic_desc.exists():
-        raise FileNotFoundError(f"Semantic description file {semantic_desc} not found. See latex2sem documentation to generate it.")
-    with open(semantic_desc, "r", encoding="utf-8") as file:
-        data = json.load(file)
-    cleaned_data = []
-    with open(source, "r", encoding="utf-8") as file:
-        for line in file:
-            cleaned_data.append(json.loads(line))
-    results = {}
-    for item in cleaned_data:
-        id = str(item["id"])
-        text = get_text(item["body"])
-        results[id] = " ".join(text).strip()
-        if id in data:
-            results[id] += " " + data[id]
-    return results
-
-
-def _is_file(source: str | Path) -> bool:
-    return isinstance(source, Path) or source.endswith(".jsonl")
-
-
 def generate_semantic_descriptions(data: list[dict], output_file: Path, model, assistant, processor, use_context: bool = False) -> None:
         results = {}
         if use_context:
@@ -173,14 +89,26 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
 
         try:
             for answer_obj in tqdm(data, desc="Processing answers"):
-                formulas = get_formulas(answer_obj["body"])
+                if "body" in answer_obj:
+                    formulas = get_formulas(answer_obj["body"])
+                    formulas = [formula["latex"] for formula in formulas]
+                elif "title" in answer_obj and "question" in answer_obj:
+                    formulas = get_formulas(answer_obj["title"]) + get_formulas(answer_obj["question"])
+                    formulas = [formula["latex"] for formula in formulas]
+                else:
+                    raise ValueError("Answer object must contain either 'body' or both 'title' and 'question' keys.")
                 if not formulas:
                     continue
                 id = str(answer_obj["id"])
                 results[id] = ""
                 contents = []
                 if use_context:
-                    answer_text = splice(answer_obj["body"])
+                    if "body" in answer_obj:
+                        answer_text = splice(answer_obj["body"])
+                    elif "title" in answer_obj and "question" in answer_obj:
+                        answer_text = splice(answer_obj["title"]) + " " + splice(answer_obj["question"])
+                    else:
+                        raise ValueError("Answer object must contain either 'body' or both 'title' and 'question' keys.")
                     len_answer_text = len(answer_text)
                     i = 1
                     while len_answer_text / i > TRUNCATE_LENGTH:
@@ -223,12 +151,12 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
                 results[id] = semantic_meaning.replace("$", "")
 
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Results saved to {output_file}.")
         except (Exception, KeyboardInterrupt) as e:
             print(f"An error occurred: {e}")
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Partial results saved to {output_file}.")
 
 
