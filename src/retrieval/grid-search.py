@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ranx import Qrels, Run, compare, evaluate
 
-from src.utils import CLEANED_DIR, DATA_DIR, TRANSLATION_DIR, load
+from src.utils import CLEANED_DIR, QRELS, TRANSLATION_DIR, load
 
 
 # k1 and b values to try. 1.2 and 0.75 are the BM25 defaults.
@@ -48,7 +48,7 @@ def main():
 
     judgments = {}
     for year in YEARS:
-        for line in (DATA_DIR / "qrels" / f"task1_{year}.tsv").read_text(encoding="utf-8").splitlines():
+        for line in QRELS[year].read_text(encoding="utf-8").splitlines():
             qid, _, doc, grade = line.split("\t")
             judgments.setdefault(qid, {})[doc] = int(grade)
     topics = [(qid, text) for qid, text in topics if qid in judgments]

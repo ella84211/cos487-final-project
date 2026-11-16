@@ -5,20 +5,19 @@ Contains the retrieval(query, training, k) function, which retrieves the top-k s
 
 from sentence_transformers import SentenceTransformer, util
 import numpy as np
-from pathlib import Path
 from typing import Literal
 
-THIS_DIR = Path(__file__).resolve().parent
+from src.utils import INDEX_MAP, MODEL, MODEL_DIR
 
 PATHS = {
     "pretrained": {
         "model": "all-mpnet-base-v2",
-        "embeddings": THIS_DIR / "pretrained_answer_embeddings.npz"
+        "embeddings": INDEX_MAP["neural_pt"],
     },
     "finetuned": {
-        "model": str(THIS_DIR / "finetuned_model"),
-        "embeddings": THIS_DIR / "finetuned_answer_embeddings.npz"
-    }
+        "model": str(MODEL_DIR / "finetuned_model"),
+        "embeddings": INDEX_MAP["neural_ft"],
+    },
 }
 
 models = {}

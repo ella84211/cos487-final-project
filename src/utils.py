@@ -17,13 +17,17 @@ from tqdm import tqdm
 
 Piece = str | dict
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT_DIR / "data"
+
+MODEL_DIR = ROOT_DIR / "models"
 
 CLEANED_DIR = DATA_DIR / "clean"
 CLEANED_ANSWERS = CLEANED_DIR / "answers.jsonl"
 
 TOPIC_YEARS = (2020, 2021, 2022)
 CLEANED_TOPICS = [CLEANED_DIR / f"topics_{year}.jsonl" for year in TOPIC_YEARS]
+QRELS = {year: DATA_DIR / "qrels" / f"task1_{year}.tsv" for year in TOPIC_YEARS}
 
 TRANSLATION_DIR = DATA_DIR / "translations"
 
@@ -34,7 +38,9 @@ INDEX_MAP = {
     "without_context": INDEX_DIR / "without_context_index.json",
     "with_context": INDEX_DIR / "with_context_index.json",
     "with_latex": INDEX_DIR / "with_latex_index.json",
-    "without_latex": INDEX_DIR / "without_latex_index.json"
+    "without_latex": INDEX_DIR / "without_latex_index.json",
+    "neural_pt": INDEX_DIR / "neural_pt_index.npz",
+    "neural_ft": INDEX_DIR / "neural_ft_index.npz"
 }
 
 def get_formulas(pieces: list[Piece]) -> list[dict]:
@@ -84,15 +90,14 @@ def load(source: str | Path = CLEANED_ANSWERS, translations: str | Path | None =
     """
     saved = {}
     if translations is not None:
+        if with_latex:
+            print("WARNING: with_latex argument ignored.\nOnly non-translated data can be loaded with original LaTeX.")
+            with_latex = False
         path = Path(translations)
         if not path.exists():
             raise FileNotFoundError(f"Translation file {path} not found.")
         with open(path, encoding="utf-8") as file:
             saved = json.load(file)
-
-    elif translations is None:
-        if with_latex:
-            print("WARNING: with_latex argument ignored. \n Only non-translated data can be loaded with original LaTeX.")
 
     source = Path(source)
     if not source.exists():

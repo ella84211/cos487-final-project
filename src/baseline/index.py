@@ -1,48 +1,25 @@
 """
-Encodes all answers in the Posts file using a pretrained and finetuned model and saves the embeddings to .npz files.
+Encodes the cleaned answers using a pretrained and finetuned model and saves the embeddings to .npz files.
 
 Usage:
     python -m src.baseline.index
 """
 
 from sentence_transformers import SentenceTransformer
-import bs4
 from tqdm import tqdm
 import numpy as np
 from pathlib import Path
-from ARQMathCode.Entity_Parser_Record.post_parser_record import PostParserRecord
 
-
-THIS_DIR = Path(__file__).resolve().parent
+from src.utils import CLEANED_ANSWERS, INDEX_MAP, MODEL_DIR, MODEL, load
 
 PT_MODEL = "all-mpnet-base-v2"
-FT_MODEL = str(THIS_DIR / "finetuned_model")
+FT_MODEL = MODEL_DIR / "finetuned_model"
 
-PT_EMBEDDINGS_FILE = THIS_DIR / "pretrained_answer_embeddings.npz"
-FT_EMBEDDINGS_FILE = THIS_DIR / "finetuned_answer_embeddings.npz"
-
-POSTS = THIS_DIR.parent.parent / "data" / "Posts.V1.3.xml"
 BATCH_SIZE = 128
 
-
-def parse_answer(text):
-    """Removes HTML tags from answers in the Post file"""
-    soup1 = bs4.BeautifulSoup(text, 'html.parser')
-    for match in soup1.find_all('span'):
-        match.unwrap()
-    text = soup1.text
-    new_text = text.strip()
-    return new_text
-
-
 def read_corpus():
-    """Reads answers from the posts file and returns a dictionary of answer_id: answer_text"""
-    post_reader = PostParserRecord(POSTS)
-    final_result = {}
-    for answer_id, post_obj in tqdm(post_reader.map_just_answers.items(), desc="Parsing answers"):
-        body = parse_answer(post_obj.body)
-        final_result[answer_id] = body
-    return final_result
+    """Return ``{answer_id: text}`` for the cleaned answers, with formulas kept."""
+    return load(CLEANED_ANSWERS, with_latex=True)
 
 
 def get_embeddings(model_Path, filepath, candidates):
@@ -73,7 +50,7 @@ if __name__ == '__main__':
     print("Reading corpus...")
     candidates = read_corpus()
     print(f"Read {len(candidates)} answers from the corpus. Now encoding with the pretrained model...")
-    get_embeddings(PT_MODEL, PT_EMBEDDINGS_FILE, candidates)
+    get_embeddings(PT_MODEL, INDEX_MAP["neural_pt"], candidates)
     print(f"Read {len(candidates)} answers from the corpus. Now encoding with the finetuned model...")
-    get_embeddings(FT_MODEL, FT_EMBEDDINGS_FILE, candidates)
+    get_embeddings(FT_MODEL, INDEX_MAP["neural_ft"], candidates)
     print("Done.")

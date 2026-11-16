@@ -7,3 +7,4 @@ torch==2.9.0
 torchvision==0.24.0
 accelerate==1.14.0
 sentence-transformers==5.2.0
+ranx>=0.3.20

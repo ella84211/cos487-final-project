@@ -2,7 +2,7 @@
 
 ## finetune
 
-Fine-tunes the all-mpnet-base-v2 model on ARQMath-1 and -2. Writes to src/baseline/finetuned_model. Run from the repository root.
+Fine-tunes the all-mpnet-base-v2 model on ARQMath-1 and -2. Writes to models/finetuned_model. Run from the repository root.
 
 Usage:
 
@@ -12,7 +12,7 @@ python -m src.baseline.finetune
 
 ## index
 
-Uses the pretrained and fine-tuned model to encode all answers in the Posts file and saves the embeddings to .npz files. Run from the repository root.
+Uses the pretrained and fine-tuned model to encode the cleaned answers in ``data/clean/answers.jsonl`` and saves the embeddings to .npz files. Run from the repository root.
 
 Usage:
 

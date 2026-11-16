@@ -7,7 +7,6 @@ Usage:
 """
 
 import random
-import html
 import json
 import shutil
 import numpy as np
@@ -17,7 +16,6 @@ from pathlib import Path
 from collections import defaultdict
 from tqdm import tqdm
 
-from bs4 import BeautifulSoup
 from sentence_transformers import (
     SentenceTransformer,
     InputExample,
@@ -26,25 +24,15 @@ from sentence_transformers import (
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
-from ARQMathCode.Entity_Parser_Record.post_parser_record import PostParserRecord
+from src.utils import CLEANED_ANSWERS, CLEANED_DIR, MODEL_DIR, QRELS, load
 
 
-THIS_DIR = Path(__file__).resolve().parent
-DATA_DIR = THIS_DIR.parent.parent / "data"
-POSTS = DATA_DIR / "Posts.V1.3.xml"
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-QREL_FILES = [
-    DATA_DIR / "qrels" / "task1_2020.tsv",
-    DATA_DIR / "qrels" / "task1_2021.tsv",
-]
-
-TOPIC_FILES = [
-    DATA_DIR / "topics" / "Topics_Task1_2020.xml",
-    DATA_DIR / "topics" / "Topics_Task1_2021.xml",
-]
+YEARS = (2020, 2021)
 
 BASE_MODEL = "sentence-transformers/all-mpnet-base-v2"
-OUTPUT_DIR = THIS_DIR / "finetuned_model"
+OUTPUT_DIR = MODEL_DIR / "finetuned_model"
 
 BATCH_SIZE = 16
 EPOCHS = 10
@@ -64,52 +52,26 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 
-def parse_answer(text):
-    soup = BeautifulSoup(text, "html.parser")
-    for match in soup.find_all("span"):
-        match.unwrap()
-    return soup.get_text().strip()
-
-
-def extract_plain_text(topic, tag_name):
-    element = topic.find(tag_name)
-    if element is None:
-        return ""
-    raw = element.get_text()
-    decoded = html.unescape(raw)
-    return BeautifulSoup(decoded, "html.parser").get_text().strip()
-
-
 def get_topics():
     topics = {}
-    for topic_file in TOPIC_FILES:
-        year = topic_file.stem.split("_")[-1]
+    for year in YEARS:
         print(f"Reading topics from {year}...")
-        with open(topic_file, "r", encoding="utf-8") as f:
-            xml = f.read()
-        soup = BeautifulSoup(xml, "xml")
-        for topic_xml in tqdm(soup.find_all("Topic"), desc=f"Topics {year}"):
-            topic_id = topic_xml["number"]
-            title = extract_plain_text(topic_xml, "Title")
-            question = extract_plain_text(topic_xml, "Question")
-            query = f"{title}\n{question}".strip()
-            topics[(year, topic_id)] = query
+        topics.update(load(CLEANED_DIR / f"topics_{year}.jsonl", with_latex=True))
     return topics
 
 
 def get_qrels():
     qrels = defaultdict(dict)
-    for qrel_file in QREL_FILES:
-        year = qrel_file.stem.split("_")[-1]
+    for year in YEARS:
         print(f"Reading qrels from {year}...")
-        with open(qrel_file, "r") as f:
+        with open(QRELS[year], "r") as f:
             for line in f:
                 if not line.strip():
                     continue
-                topic_id, _, answer_id, relevance = (line.strip().split())
+                topic_id, _, answer_id, relevance = line.strip().split()
                 relevance = float(relevance)
                 if relevance > 0:
-                    qrels[(year, topic_id)][str(answer_id)] = relevance
+                    qrels[topic_id][str(answer_id)] = relevance
     return qrels
 
 
@@ -132,15 +94,8 @@ def split_queries(topics, qrels):
 
 def read_corpus(answer_ids):
     print("\nReading answer corpus...")
-    post_reader = PostParserRecord(POSTS)
-    corpus = {}
-    for answer_id, post_obj in tqdm(post_reader.map_just_answers.items(), desc="Parsing answers"):
-        answer_id = str(answer_id)
-        if answer_id not in answer_ids:
-            continue
-        body = parse_answer(post_obj.body)
-        if body:
-            corpus[answer_id] = body
+    texts = load(CLEANED_ANSWERS, with_latex=True)
+    corpus = {answer_id: texts[answer_id] for answer_id in answer_ids if texts.get(answer_id)}
     print(f"Loaded {len(corpus)} answers.")
     return corpus
 
@@ -166,7 +121,7 @@ def train_one_epoch(model, train_loss, dataloader, optimizer, scheduler, device)
     total_loss = 0.0
     total_examples = 0
     for features, labels in tqdm(dataloader, desc="Training", leave=False):
-        features = [{key: value.to(device) for key, value in feature.items()} for feature in features]
+        features = [{key: value.to(device) if torch.is_tensor(value) else value for key, value in feature.items()} for feature in features]
         labels = labels.to(device)
         optimizer.zero_grad()
         loss_value = train_loss(features, labels)
@@ -187,7 +142,7 @@ def evaluate_loss(model, val_loss, dataloader):
     total_examples = 0
     with torch.no_grad():
         for features, labels in tqdm(dataloader, desc="Validation loss", leave=False):
-            features = [{key: value.to(device) for key, value in feature.items()} for feature in features]
+            features = [{key: value.to(device) if torch.is_tensor(value) else value for key, value in feature.items()} for feature in features]
             labels = labels.to(device)
             if labels.shape[0] < 2:
                 continue
