@@ -260,7 +260,7 @@ def _write(results: dict, out: Path) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     with open(tmp, "w", encoding="utf-8") as file:
-        json.dump(results, file, indent=2)
+        json.dump(results, file, indent=2, ensure_ascii=False)
     tmp.replace(out)
 
 
