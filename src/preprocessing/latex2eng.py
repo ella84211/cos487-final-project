@@ -79,10 +79,10 @@ def _is_file(source: str | Path) -> bool:
 
 
 @cache
-def _gemma():
+def _gemma(use_assistant: bool = True):
     from src.preprocessing.gemma import load_model
 
-    return load_model()
+    return load_model(use_assistant=use_assistant)
 
 
 def _llm(latex: str) -> str | None:
@@ -108,7 +108,7 @@ def _llm_many(formulas: list[str], batch_size: int) -> list[str | None]:
     """Translate distinct formulas in one batched Gemma call."""
     from src.preprocessing.gemma import generate
 
-    model, _, processor = _gemma()
+    model, _, processor = _gemma(use_assistant=False)
     indexes = []
     conversations = []
     results: list[str | None] = [None] * len(formulas)
