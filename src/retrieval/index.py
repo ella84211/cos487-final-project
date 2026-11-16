@@ -34,13 +34,9 @@ from tqdm import tqdm
 from nltk.corpus import stopwords
 
 from src.preprocessing.baseline import with_latex, without_latex
-from src.utils import CLEANED_ANSWERS, DATA_DIR, TRANSLATION_DIR, load
+from src.utils import CLEANED_ANSWERS, DATA_DIR, TRANSLATION_DIR, INDEX_DIR, INDEX_MAP, load
 
-
-INDEX_DIR = DATA_DIR / "indexes"
-
-
-PREPROCESSING_OPTIONS = {
+TRANSLATION_MAP = {
     "by_detex": TRANSLATION_DIR / "by_detex.json",
     "by_llm": TRANSLATION_DIR / "by_llm.json",
     "without_context": TRANSLATION_DIR / "semantic_desc_no_context.json",
@@ -84,9 +80,9 @@ def split_words(text: str) -> list[str]:
 
 def build_index(preprocessing: str, force_rebuild: bool=False):
     """Builds an inverted index for the given preprocessing option."""
-    if preprocessing not in PREPROCESSING_OPTIONS:
-        raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(PREPROCESSING_OPTIONS.keys())}")
-    index_path = f"{INDEX_DIR}/{preprocessing}_index.json"
+    if preprocessing not in INDEX_MAP:
+        raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(translation_map.keys())}")
+    index_path = INDEX_MAP[preprocessing]
     if os.path.exists(index_path) and not force_rebuild:
         print(f"Index file {index_path} already exists. Skipping index build.")
         return
@@ -101,10 +97,10 @@ def build_index(preprocessing: str, force_rebuild: bool=False):
     if preprocessing in ("with_latex", "without_latex"):
         if not CLEANED_ANSWERS.exists():
             raise FileNotFoundError(f"Cleaned data not found. Run `src/preprocessing/clean.py` prior to indexing.")
-        data = PREPROCESSING_OPTIONS[preprocessing](CLEANED_ANSWERS)
+        data = TRANSLATION_MAP[preprocessing](CLEANED_ANSWERS)
 
     else:
-        data = load(PREPROCESSING_OPTIONS[preprocessing])
+        data = load(translations=TRANSLATION_MAP[preprocessing])
 
     for docid, text in tqdm(data.items(), desc=f"Building {preprocessing} index"):
         words = split_words(text)
@@ -129,9 +125,9 @@ def build_index(preprocessing: str, force_rebuild: bool=False):
 
 def load_index(preprocessing: str) -> dict:
     """Loads the inverted index for the given preprocessing option from the INDEX_DIR directory."""
-    if preprocessing not in PREPROCESSING_OPTIONS:
-        raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(PREPROCESSING_OPTIONS.keys())}")
-    index_path = f"{INDEX_DIR}/{preprocessing}_index.json"
+    if preprocessing not in INDEX_MAP:
+        raise ValueError(f"Invalid preprocessing option: {preprocessing}. Must be one of {list(TRANSLATION_MAP.keys())}")
+    index_path = INDEX_MAP[preprocessing]
     if not os.path.exists(index_path):
         raise FileNotFoundError(f"Index file {index_path} does not exist. Please build the index first.")
     
@@ -165,10 +161,9 @@ def get_average_document_length(index: dict) -> float:
 
 def main():
     """Main function to build the indexes for both paragraph and paper levels, with and without stemming."""
-    approaches = list(PREPROCESSING_OPTIONS.keys())
+    approaches = list(TRANSLATION_MAP.keys())
     parser = argparse.ArgumentParser(description="Build inverted indexes for the corpus.")
     parser.add_argument("--force", action="store_true", help="Force rebuild of indexes even if they already exist.")
-    parser.add_argument("--index_dir", type=str, help="Directory to save the indexes.")
 
     parser.add_argument(
         "--approaches",
@@ -183,9 +178,7 @@ def main():
     )
 
     args = parser.parse_args()
-    if args.index_dir:
-        global INDEX_DIR
-        INDEX_DIR = args.index_dir
+    
     os.makedirs(INDEX_DIR, exist_ok=True)
     for preprocessing in args.approaches:
         build_index(preprocessing, force_rebuild=args.force)

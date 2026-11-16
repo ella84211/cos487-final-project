@@ -4,8 +4,9 @@ A field is a list of pieces. Text is a ``str`` and a formula is a dict:
 
     ["Let ", {"latex": "x^2"}, " be even."]
 
-``splice`` joins pieces back into one string. ``load`` drops the formulas
-from ``data/clean/answers.jsonl`` and appends a saved translation file.
+``splice`` joins pieces back into one string. ``load`` reads a cleaned
+``.jsonl`` file, keeps formulas when asked, and appends a translation file
+when one is given.
 """
 
 import json
@@ -21,13 +22,20 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 CLEANED_DIR = DATA_DIR / "clean"
 CLEANED_ANSWERS = CLEANED_DIR / "answers.jsonl"
 
-TRANSLATION_DIR = DATA_DIR / "translations"
-
-CLEANED_ANSWERS = CLEANED_DIR / "answers.jsonl"
-
 TOPIC_YEARS = (2020, 2021, 2022)
 CLEANED_TOPICS = [CLEANED_DIR / f"topics_{year}.jsonl" for year in TOPIC_YEARS]
 
+TRANSLATION_DIR = DATA_DIR / "translations"
+
+INDEX_DIR = DATA_DIR / "indexes"
+INDEX_MAP = {
+    "by_detex": INDEX_DIR / "by_detex_index.json",
+    "by_llm": INDEX_DIR / "by_llm_index.json",
+    "without_context": INDEX_DIR / "without_context_index.json",
+    "with_context": INDEX_DIR / "with_context_index.json",
+    "with_latex": INDEX_DIR / "with_latex_index.json",
+    "without_latex": INDEX_DIR / "without_latex_index.json"
+}
 
 def get_formulas(pieces: list[Piece]) -> list[dict]:
     """Return the formula pieces of one field, in order.
@@ -64,29 +72,38 @@ def splice(pieces: list[Piece], translate: Callable[[dict], str | None] | None =
     return " ".join("".join(parts).split())
 
 
-def load(translations: str | Path) -> dict[str, str]:
+def load(source: str | Path = CLEANED_ANSWERS, translations: str | Path | None = None, with_latex: bool = False) -> dict[str, str]:
     """
-    Drop the formulas from the cleaned answers and append the saved translations.
+    Read a cleaned file into ``{id: text}``.
 
-    Reads cleaned answers from ``data/clean/answers.jsonl``. 
-    ``translations`` maps a document id to the text to append. 
-    A document with no saved translation keeps its text alone.
+    ``source`` defaults to ``data/clean/answers.jsonl``. List fields are read
+    in order, so a topic contributes its title and then its question.
+    Formulas stay as ``$latex$`` when ``with_latex`` is set, and are dropped
+    otherwise. ``translations`` maps a document id to text that is appended.
+    With no translation file, each document keeps its own text.
     """
-    path = Path(translations)
-    if not path.exists():
-        raise FileNotFoundError(f"Translation file {path} not found.")
-    if not CLEANED_ANSWERS.exists():
-        raise FileNotFoundError(f"Cleaned answers file {CLEANED_ANSWERS} not found.")
-    with open(path, encoding="utf-8") as file:
-        saved = json.load(file)
+    saved = {}
+    if translations is not None:
+        path = Path(translations)
+        if not path.exists():
+            raise FileNotFoundError(f"Translation file {path} not found.")
+        with open(path, encoding="utf-8") as file:
+            saved = json.load(file)
 
+    elif translations is None:
+        if with_latex:
+            print("WARNING: with_latex argument ignored. \n Only non-translated data can be loaded with original LaTeX.")
+
+    source = Path(source)
+    if not source.exists():
+        raise FileNotFoundError(f"Cleaned file {source} not found.")
     texts = {}
-    with open(CLEANED_ANSWERS, encoding="utf-8") as file:
-        for line in tqdm(file, desc=CLEANED_ANSWERS.name):
+    with open(source, encoding="utf-8") as file:
+        for line in tqdm(file, desc=source.name):
             row = json.loads(line)
             doc_id = str(row.pop("id"))
             pieces = [piece for field in row.values() if isinstance(field, list) for piece in field]
-            text = " ".join(get_text(pieces)).strip()
+            text = splice(pieces) if with_latex else " ".join(get_text(pieces)).strip()
             extra = saved.get(doc_id)
             if extra and str(extra).strip():
                 text = f"{text} {str(extra).strip()}".strip()
