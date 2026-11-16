@@ -30,6 +30,14 @@ CLEANED_TOPICS = [CLEANED_DIR / f"topics_{year}.jsonl" for year in TOPIC_YEARS]
 QRELS = {year: DATA_DIR / "qrels" / f"task1_{year}.tsv" for year in TOPIC_YEARS}
 
 TRANSLATION_DIR = DATA_DIR / "translations"
+TOPICS_MAP = {
+    "by_detex": TRANSLATION_DIR / "by_detex_topics.json",
+    "by_llm": TRANSLATION_DIR / "by_llm_topics.json",
+    "without_context": TRANSLATION_DIR / "semantic_desc_no_context_topics.json",
+    "with_context": TRANSLATION_DIR / "semantic_desc_with_context_topics.json",
+}
+
+BM25_CONFIG = ROOT_DIR / "src" / "retrieval" / "config.yaml"
 
 INDEX_DIR = DATA_DIR / "indexes"
 INDEX_MAP = {
