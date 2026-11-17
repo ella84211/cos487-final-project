@@ -3,6 +3,11 @@
 TF-IDF and BM25 run on the first six ``INDEX_MAP`` entries. The neural retriever
 runs on the last two. 2022 is the held-out test set.
 
+Each run is scored twice. The plain metrics treat an unjudged hit as
+non-relevant. The prime metrics (``ndcg'``, ``ndcg@10'``, and the rest) drop
+hits that have no judgment for that topic, then score that condensed list.
+Judged non-relevant documents stay. The cutoff is applied after condensing.
+
     python -m src.retrieval.evaluate
 """
 
@@ -20,6 +25,14 @@ K = 100
 METRICS = ["ndcg", "ndcg@5", "ndcg@10", "mrr", "precision@5", "precision@10"]
 RUNS_DIR = DATA_DIR / "runs"
 METRICS_DIR = DATA_DIR / "metrics"
+
+
+def condense(results: dict, qrels: dict) -> dict:
+    """Drop hits with no judgment for that topic. Judged non-relevant hits stay."""
+    return {
+        qid: {doc: score for doc, score in hits.items() if doc in qrels.get(qid, {})}
+        for qid, hits in results.items()
+    }
 
 
 def main():
@@ -105,6 +118,12 @@ def main():
         run = Run(results, name=system)
         run.save(str(RUNS_DIR / f"{system}.trec"))
         overall = evaluate(qrels, run, METRICS)
+        prime_run = Run(condense(results, qrels_dict), name=system)
+        prime_overall = evaluate(qrels, prime_run, METRICS)
+        scores = {}
+        for metric in METRICS:
+            scores[metric] = float(overall[metric])
+            scores[f"{metric}'"] = float(prime_overall[metric])
         mean_latency = sum(latencies.values()) / len(latencies)
         index_path = INDEX_MAP[name]
         per_query = {}
@@ -112,12 +131,13 @@ def main():
             per_query[qid] = {"latency_seconds": latency}
             for metric in METRICS:
                 per_query[qid][metric] = float(run.scores[metric][qid])
+                per_query[qid][f"{metric}'"] = float(prime_run.scores[metric][qid])
         payload = {
             "system": system,
             "index": str(index_path),
             "index_bytes": index_path.stat().st_size,
             "mean_latency_seconds": mean_latency,
-            "metrics": {metric: float(overall[metric]) for metric in METRICS},
+            "metrics": scores,
             "queries": per_query,
         }
         (METRICS_DIR / f"{system}.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -127,8 +147,8 @@ def main():
             **payload["metrics"],
         }
         print(f"{system} mean latency {mean_latency:.4f}s index {payload['index_bytes']} bytes")
-        for metric in METRICS:
-            print(f"  {metric} {payload['metrics'][metric]:.4f}")
+        for metric, value in scores.items():
+            print(f"  {metric} {value:.4f}")
 
     (METRICS_DIR / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(f"Wrote runs to {RUNS_DIR} and metrics to {METRICS_DIR}.")
