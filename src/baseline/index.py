@@ -10,10 +10,10 @@ from tqdm import tqdm
 import numpy as np
 from pathlib import Path
 
-from src.utils import CLEANED_ANSWERS, INDEX_MAP, MODEL_DIR, MODEL, load
+from src.utils import CLEANED_ANSWERS, INDEX_MAP, MODEL_DIR, load
 
 PT_MODEL = "all-mpnet-base-v2"
-FT_MODEL = MODEL_DIR / "finetuned_model"
+FT_MODEL = str(MODEL_DIR / "finetuned_model")
 
 BATCH_SIZE = 128
 
