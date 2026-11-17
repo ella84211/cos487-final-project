@@ -7,7 +7,7 @@ from sentence_transformers import SentenceTransformer, util
 import numpy as np
 from typing import Literal
 
-from src.utils import INDEX_MAP, MODEL, MODEL_DIR
+from src.utils import INDEX_MAP, MODEL_DIR
 
 PATHS = {
     "pretrained": {
