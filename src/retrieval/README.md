@@ -47,8 +47,3 @@ Retrieves documents for a given query, for a specified preprocessing approach, w
 from src.retrieval.bm25 import retrieve
 results = retrieve("what is bm25", "with_latex", 10)
 ```
-
-## all-mpnet
-
-Retrieves documents for a given query using embeddings from the all-mpnet model and cosine similarity.
-FINISH THIS

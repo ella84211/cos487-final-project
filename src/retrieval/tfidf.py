@@ -25,7 +25,10 @@ def retrieve(query: str, preprocessing: str, k: int) -> dict:
         dict: A dictionary containing document IDs as keys with their scores as values
     """
 
-    index = load_index(preprocessing)
+    global indexes
+    if preprocessing not in indexes:
+        indexes[preprocessing] = load_index(preprocessing)
+    index = indexes[preprocessing]
 
     docs = {}
     terms = split_words(query)

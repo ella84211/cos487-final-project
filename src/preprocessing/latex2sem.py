@@ -14,15 +14,11 @@ The cleaned topics files default to the cleaned topic datasets for 2020–2022.
 Use --context to include answer or topic text in the generation prompt.
 
 Run the script as a module from the repository root.
-
 Examples:
     python -m src.preprocessing.latex2sem                           # Process both answers and topics without context
     python -m src.preprocessing.latex2sem --answers                 # Process only answers without context
     python -m src.preprocessing.latex2sem --topics --context        # Process only topics with context
     python -m src.preprocessing.latex2sem --answers --context       # Process only answers with context
-
-The with_context() and without_context() functions return dictionaries
-mapping document IDs to cleaned text augmented with semantic descriptions.
 """
 
 import json
@@ -33,23 +29,16 @@ from pathlib import Path
 from pydetex.pipelines import strict_eqn
 
 from src.preprocessing.gemma import load_model, generate
-from src.utils import splice, get_formulas, get_text
+from src.utils import CLEANED_ANSWERS, CLEANED_TOPICS, TRANSLATION_DIR, get_formulas, splice
 
 
 # Number of characters to truncate the context to
 TRUNCATE_LENGTH = 1000
 
-data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-CLEANED_DATA = data_dir / "clean" / "answers.jsonl"
-CLEANED_TOPICS_DATA = [
-    data_dir / "clean" / "topics_2020.jsonl",
-    data_dir / "clean" / "topics_2021.jsonl",
-    data_dir / "clean" / "topics_2022.jsonl",
-]
-SEMANTIC_DESC_CONTEXT = data_dir / "translations" / "semantic_desc_with_context.json"
-SEMANTIC_DESC_NO_CONTEXT = data_dir / "translations" / "semantic_desc_no_context.json"
-SEMANTIC_DESC_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_with_context_topics.json"
-SEMANTIC_DESC_NO_CONTEXT_TOPICS = data_dir / "translations" / "semantic_desc_no_context_topics.json"
+SEMANTIC_DESC_CONTEXT = TRANSLATION_DIR / "semantic_desc_with_context.json"
+SEMANTIC_DESC_NO_CONTEXT = TRANSLATION_DIR / "semantic_desc_no_context.json"
+SEMANTIC_DESC_CONTEXT_TOPICS = TRANSLATION_DIR / "semantic_desc_with_context_topics.json"
+SEMANTIC_DESC_NO_CONTEXT_TOPICS = TRANSLATION_DIR / "semantic_desc_no_context_topics.json"
 
 MESSAGES_NO_CONTEXT = [
     {
@@ -89,86 +78,6 @@ MESSAGES_WITH_CONTEXT = [
         "content": ""
     },
 ]
-
-
-def with_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DESC_CONTEXT) -> dict:
-    """Translate with Gemma, using context.
-
-    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    if not _is_file(source):
-        raise ValueError("with_context only supports .jsonl files.")
-    return _add_descriptions(source, semantic_desc)
-
-
-
-def without_context(source: Path = CLEANED_DATA, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT) -> dict:
-    """Translate with Gemma, without using context.
-
-    Given a cleaned ``.jsonl`` file, returns ``{id: text}`` for every row in it.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    if not _is_file(source):
-        raise ValueError("without_context only supports .jsonl files.")
-    return _add_descriptions(source, semantic_desc)
-
-
-def with_context_topics(source: list[Path] = CLEANED_TOPICS_DATA, semantic_desc: Path = SEMANTIC_DESC_CONTEXT_TOPICS) -> dict:
-    """Translate with Gemma, using context, for topics.
-
-    Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    results = {}
-    for file in source:
-        if not _is_file(file):
-            raise ValueError("with_context_topics only supports .jsonl files.")
-        results.update(_add_descriptions(file, semantic_desc))
-    return results
-
-
-def without_context_topics(source: list[Path] = CLEANED_TOPICS_DATA, semantic_desc: Path = SEMANTIC_DESC_NO_CONTEXT_TOPICS) -> dict:
-    """Translate with Gemma, without using context, for topics.
-
-    Given a list of cleaned ``.jsonl`` files, returns one dictionary with ``{id: text}`` for every row in them.
-    Assumes the semantic_desc file is a JSON file with {id: formula_desc} for every document
-    that contains formulas.
-    """
-    results = {}
-    for file in source:
-        if not _is_file(file):
-            raise ValueError("without_context_topics only supports .jsonl files.")
-        results.update(_add_descriptions(file, semantic_desc))
-    return results
-
-
-def _add_descriptions(source: Path, semantic_desc: Path) -> dict:
-    if type(semantic_desc) is str:
-        semantic_desc = Path(semantic_desc)
-    if not semantic_desc.exists():
-        raise FileNotFoundError(f"Semantic description file {semantic_desc} not found. See latex2sem documentation to generate it.")
-    with open(semantic_desc, "r", encoding="utf-8") as file:
-        data = json.load(file)
-    cleaned_data = []
-    with open(source, "r", encoding="utf-8") as file:
-        for line in file:
-            cleaned_data.append(json.loads(line))
-    results = {}
-    for item in cleaned_data:
-        id = str(item["id"])
-        text = get_text(item["body"])
-        results[id] = " ".join(text).strip()
-        if id in data:
-            results[id] += " " + data[id]
-    return results
-
-
-def _is_file(source: str | Path) -> bool:
-    return isinstance(source, Path) or source.endswith(".jsonl")
 
 
 def generate_semantic_descriptions(data: list[dict], output_file: Path, model, assistant, processor, use_context: bool = False) -> None:
@@ -242,19 +151,19 @@ def generate_semantic_descriptions(data: list[dict], output_file: Path, model, a
                 results[id] = semantic_meaning.replace("$", "")
 
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Results saved to {output_file}.")
         except (Exception, KeyboardInterrupt) as e:
             print(f"An error occurred: {e}")
             with open(output_file, "w", encoding="utf-8") as file:
-                json.dump(results, file, indent=2)
+                json.dump(results, file, indent=2, ensure_ascii=False)
             print(f"Partial results saved to {output_file}.")
 
 
 def main():
     parser = argparse.ArgumentParser(description="Process LaTeX formulas and extract semantic meanings.")
-    parser.add_argument("--cleaned_file", type=str, default=CLEANED_DATA, help="Path to the cleaned JSONL file containing answers.")
-    parser.add_argument("--cleaned_topics_files", nargs="*", default=CLEANED_TOPICS_DATA, help="Paths to the cleaned JSONL files containing topics.")
+    parser.add_argument("--cleaned_file", type=str, default=CLEANED_ANSWERS, help="Path to the cleaned JSONL file containing answers.")
+    parser.add_argument("--cleaned_topics_files", nargs="*", default=CLEANED_TOPICS, help="Paths to the cleaned JSONL files containing topics.")
     parser.add_argument("--output_file_no_context", type=str, default=SEMANTIC_DESC_NO_CONTEXT, help="Path to the output JSON file to save results without context.")
     parser.add_argument("--output_file_context", type=str, default=SEMANTIC_DESC_CONTEXT, help="Path to the output JSON file to save results with context.")
     parser.add_argument("--output_topics_file_no_context", type=str, default=SEMANTIC_DESC_NO_CONTEXT_TOPICS, help="Path to the output JSON file to save results for topics without context.")
