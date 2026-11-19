@@ -8,6 +8,11 @@ non-relevant. The prime metrics (``ndcg'``, ``ndcg@10'``, and the rest) drop
 hits that have no judgment for that topic, then score that condensed list.
 Judged non-relevant documents stay. The cutoff is applied after condensing.
 
+Runs are written as TSV files with columns ``qid``, ``docid``, ``rank``, and
+``score``. After they are saved, a two-sided paired Student's t-test compares
+every system on each metric. A superscript in that report is a model the row
+scores higher than, with p < 0.05.
+
     python -m src.retrieval.evaluate
 """
 
@@ -15,7 +20,7 @@ import json
 import time
 
 from tqdm import tqdm
-from ranx import Qrels, Run, evaluate
+from ranx import Qrels, Run, compare, evaluate
 
 from src.utils import BM25_CONFIG, CLEANED_DIR, DATA_DIR, INDEX_MAP, MODEL_DIR, QRELS, TOPICS_MAP, load
 
@@ -27,19 +32,13 @@ RUNS_DIR = DATA_DIR / "runs"
 METRICS_DIR = DATA_DIR / "metrics"
 
 
-def condense(results: dict, qrels: dict) -> dict:
-    """Drop hits with no judgment for that topic. Judged non-relevant hits stay."""
-    return {
-        qid: {doc: score for doc, score in hits.items() if doc in qrels.get(qid, {})}
-        for qid, hits in results.items()
-    }
-
-
 def main():
+    # retrievers
     from src.baseline.retrieval import retrieval as neural_retrieve
     from src.retrieval.bm25 import retrieve as bm25_retrieve
     from src.retrieval.tfidf import retrieve as tfidf_retrieve
 
+    # systems to evaluate
     names = list(INDEX_MAP)
     systems = [(f"{kind}_{name}", name, kind) for name in names[:6] for kind in ("bm25", "tfidf")]
     systems += [(name, name, "neural") for name in names[6:]]
@@ -49,6 +48,7 @@ def main():
     if any(name == "neural_ft" for _, name, _ in systems) and not (MODEL_DIR / "finetuned_model").exists():
         raise SystemExit("Missing fine-tuned model at models/finetuned_model.")
 
+    # topics in the same representation as each index
     topic_cache = {}
     topics = {}
     for name in INDEX_MAP:
@@ -63,6 +63,7 @@ def main():
             topic_cache[style] = loaded
         topics[name] = topic_cache[style]
 
+    # 2022 qrels
     qrels_dict = {}
     for line in QRELS[YEAR].read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -71,6 +72,7 @@ def main():
         qrels_dict.setdefault(qid, {})[doc] = int(grade)
     qrels = Qrels(qrels_dict)
 
+    # tuned bm25 parameters, or the defaults
     bm25_params = {}
     if BM25_CONFIG.exists():
         name = None
@@ -84,17 +86,22 @@ def main():
             key, value = line.split(":", 1)
             bm25_params[name][key.strip()] = float(value.strip())
 
+    # output directories
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     summary = {}
+    runs = []
+    prime_runs = []
 
     for system, name, kind in systems:
+        # judged topics for this system
         queries = {qid: text for qid, text in topics[name].items() if qid in qrels_dict}
         if not queries:
             raise SystemExit(f"No judged topics for {system}.")
         params = bm25_params.get(name, {"k1": 1.2, "b": 0.75})
         results = {}
         latencies = {}
+        # warm up the retriever before timing
         first = next(iter(queries.values()))
         if kind == "bm25":
             bm25_retrieve(first, name, K, params["k1"], params["b"])
@@ -102,6 +109,7 @@ def main():
             tfidf_retrieve(first, name, K)
         else:
             neural_retrieve(first, "pretrained" if name == "neural_pt" else "finetuned", K)
+        # retrieve and time each topic
         for qid, text in tqdm(queries.items(), desc=system):
             start = time.perf_counter()
             if kind == "bm25":
@@ -112,14 +120,29 @@ def main():
                 hits = neural_retrieve(text, "pretrained" if name == "neural_pt" else "finetuned", K)
             latencies[qid] = time.perf_counter() - start
             results[qid] = {str(doc): float(score) for doc, score in hits.items()}
+        # keep every judged topic, even when nothing was retrieved
         for qid in qrels_dict:
             results.setdefault(qid, {})
 
+        # save the run as tsv
+        lines = ["qid\tdocid\trank\tscore"]
+        for qid in sorted(results):
+            ranked = sorted(results[qid].items(), key=lambda item: (-item[1], item[0]))
+            for rank, (doc, score) in enumerate(ranked, start=1):
+                lines.append(f"{qid}\t{doc}\t{rank}\t{score}")
+        (RUNS_DIR / f"{system}.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # plain metrics, unjudged hits count as non-relevant
         run = Run(results, name=system)
-        run.save(str(RUNS_DIR / f"{system}.trec"))
+        runs.append(run)
         overall = evaluate(qrels, run, METRICS)
-        prime_run = Run(condense(results, qrels_dict), name=system)
+        # condense for prime metrics
+        prime_run = Run(
+            {qid: {doc: score for doc, score in hits.items() if doc in qrels_dict.get(qid, {})} for qid, hits in results.items()},
+            name=system,
+        )
+        prime_runs.append(prime_run)
         prime_overall = evaluate(qrels, prime_run, METRICS)
+        # per-query scores, latency, and index size
         scores = {}
         for metric in METRICS:
             scores[metric] = float(overall[metric])
@@ -150,7 +173,18 @@ def main():
         for metric, value in scores.items():
             print(f"  {metric} {value:.4f}")
 
+    # summary of every system
     (METRICS_DIR / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    # significance testing
+    report = (
+        "Two-sided paired Student's t-test. A superscript is a model this row scores higher than, with p < 0.05.\n\n"
+        + str(compare(qrels=qrels, runs=runs, metrics=METRICS, stat_test="student", max_p=0.05))
+        + "\n\nPrime metrics, unjudged hits removed before scoring:\n\n"
+        + str(compare(qrels=qrels, runs=prime_runs, metrics=METRICS, stat_test="student", max_p=0.05))
+        + "\n"
+    )
+    (METRICS_DIR / "significance.txt").write_text(report, encoding="utf-8")
+    print(report)
     print(f"Wrote runs to {RUNS_DIR} and metrics to {METRICS_DIR}.")
 
 
