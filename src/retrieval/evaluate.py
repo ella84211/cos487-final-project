@@ -10,8 +10,9 @@ Judged non-relevant documents stay. The cutoff is applied after condensing.
 
 Runs are written as TSV files with columns ``qid``, ``docid``, ``rank``, and
 ``score``. After they are saved, a two-sided paired Student's t-test compares
-every system on each metric. A superscript in that report is a model the row
-scores higher than, with p < 0.05.
+every system on each metric. ``significance.txt`` is that table: a superscript
+is a model the row scores higher than, with p < 0.05. ``significance.json``
+stores each pair's scores, p-value, and whether that difference is significant.
 
     python -m src.retrieval.evaluate
 """
@@ -28,8 +29,35 @@ from src.utils import BM25_CONFIG, CLEANED_DIR, DATA_DIR, INDEX_MAP, MODEL_DIR, 
 YEAR = 2022
 K = 100
 METRICS = ["ndcg", "ndcg@5", "ndcg@10", "mrr", "precision@5", "precision@10"]
+MAX_P = 0.05
 RUNS_DIR = DATA_DIR / "runs"
 METRICS_DIR = DATA_DIR / "metrics"
+
+
+def _comparisons(report) -> list[dict]:
+    """One record per unordered system pair and metric, with the t-test p-value."""
+    records = []
+    names = report.model_names
+    for i, left in enumerate(names):
+        for right in names[i + 1:]:
+            for metric in report.metrics:
+                stats = report.comparisons[left, right][metric]
+                score_left = float(report.results[left][metric])
+                score_right = float(report.results[right][metric])
+                p_value = float(stats["p_value"])
+                if score_left == score_right:
+                    better = None
+                else:
+                    better = left if score_left > score_right else right
+                records.append({
+                    "metric": metric,
+                    "systems": [left, right],
+                    "scores": {left: score_left, right: score_right},
+                    "p_value": None if p_value != p_value else p_value,
+                    "significant": bool(stats["significant"]),
+                    "better": better,
+                })
+    return records
 
 
 def main():
@@ -176,14 +204,28 @@ def main():
     # summary of every system
     (METRICS_DIR / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     # significance testing
+    plain = compare(qrels=qrels, runs=runs, metrics=METRICS, stat_test="student", max_p=MAX_P)
+    prime = compare(qrels=qrels, runs=prime_runs, metrics=METRICS, stat_test="student", max_p=MAX_P)
     report = (
         "Two-sided paired Student's t-test. A superscript is a model this row scores higher than, with p < 0.05.\n\n"
-        + str(compare(qrels=qrels, runs=runs, metrics=METRICS, stat_test="student", max_p=0.05))
+        + str(plain)
         + "\n\nPrime metrics, unjudged hits removed before scoring:\n\n"
-        + str(compare(qrels=qrels, runs=prime_runs, metrics=METRICS, stat_test="student", max_p=0.05))
+        + str(prime)
         + "\n"
     )
     (METRICS_DIR / "significance.txt").write_text(report, encoding="utf-8")
+    (METRICS_DIR / "significance.json").write_text(
+        json.dumps(
+            {
+                "test": "two-sided paired Student's t-test",
+                "max_p": MAX_P,
+                "metrics": _comparisons(plain),
+                "prime_metrics": _comparisons(prime),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(report)
     print(f"Wrote runs to {RUNS_DIR} and metrics to {METRICS_DIR}.")
 
